@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Official Netlify plugin that makes Next.js (App Router, API routes,
+# server rendering) work on Netlify.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
