@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -16,6 +17,16 @@ import {
 } from "react-native";
 import { createAudioPlayer } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
+import {
+  getProgress,
+  loadLibrary,
+  recordStudyDay,
+  recordTest,
+  removeItem,
+  saveItem,
+  type Progress,
+  type SavedItem,
+} from "./storage";
 
 /**
  * VidhyaAI mobile (Expo). A native client for the same VidhyaAI backend that
@@ -104,8 +115,29 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ mode: string; data: any } | null>(null);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
 
   const isAsk = mode === "ask";
+
+  async function openSaved() {
+    setSavedItems(await loadLibrary());
+    setSavedOpen(true);
+  }
+  async function openProgress() {
+    setProgress(await getProgress());
+    setProgressOpen(true);
+  }
+  async function deleteSaved(id: string) {
+    setSavedItems(await removeItem(id));
+  }
+  function openItem(it: SavedItem) {
+    setResult({ mode: it.mode, data: it.data });
+    setLang(it.lang);
+    setSavedOpen(false);
+  }
 
   async function generate() {
     if (!topic.trim()) {
@@ -127,6 +159,7 @@ export default function App() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Something went wrong");
       setResult({ mode: isAsk ? "answer" : mode, data: json.data });
+      recordStudyDay();
     } catch (e: any) {
       setError(e?.message || "Could not reach VidhyaAI. Check your connection.");
     } finally {
@@ -139,8 +172,18 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
-          <Text style={styles.brandSub}>AI Study Companion · Sarvam AI 🇮🇳</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
+            <Text style={styles.brandSub}>AI Study Companion · Sarvam AI 🇮🇳</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity style={styles.navBtn} onPress={openProgress}>
+              <Text style={styles.navBtnText}>📊</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.navBtn} onPress={openSaved}>
+              <Text style={styles.navBtnText}>📚</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 44 }} keyboardShouldPersistTaps="handled">
@@ -181,7 +224,111 @@ export default function App() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <LibraryModal
+        visible={savedOpen}
+        items={savedItems}
+        onClose={() => setSavedOpen(false)}
+        onOpen={openItem}
+        onDelete={deleteSaved}
+      />
+      <ProgressModal visible={progressOpen} progress={progress} onClose={() => setProgressOpen(false)} />
     </SafeAreaView>
+  );
+}
+
+/* ---------- Library modal ---------- */
+function LibraryModal({
+  visible,
+  items,
+  onClose,
+  onOpen,
+  onDelete,
+}: {
+  visible: boolean;
+  items: SavedItem[];
+  onClose: () => void;
+  onOpen: (it: SavedItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalWrap}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHead}>
+            <Text style={styles.sheetTitle}>📚 Saved decks</Text>
+            <TouchableOpacity onPress={onClose}><Text style={styles.close}>✕</Text></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            {items.length === 0 ? (
+              <Text style={[styles.muted, { textAlign: "center", marginTop: 30 }]}>
+                Nothing saved yet. Tap ☆ Save on any result to keep it here.
+              </Text>
+            ) : (
+              items.map((it) => (
+                <View key={it.id} style={styles.block}>
+                  <Text style={styles.blockLabel}>{it.title}</Text>
+                  <Text style={styles.muted}>{it.mode} · {it.lang}</Text>
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                    <TouchableOpacity style={[styles.action, { borderColor: C.primary }]} onPress={() => onOpen(it)}>
+                      <Text style={[styles.actionText, { color: C.fg }]}>Open</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.action} onPress={() => onDelete(it.id)}>
+                      <Text style={[styles.actionText, { color: C.rose }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ---------- Progress modal ---------- */
+function ProgressModal({ visible, progress, onClose }: { visible: boolean; progress: Progress | null; onClose: () => void }) {
+  const cards = progress
+    ? [
+        { label: "Day streak", value: `${progress.streak}🔥` },
+        { label: "Tests taken", value: `${progress.attempts}` },
+        { label: "Avg score", value: `${progress.avg}%` },
+        { label: "Best score", value: `${progress.best}%` },
+      ]
+    : [];
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalWrap}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHead}>
+            <Text style={styles.sheetTitle}>📊 Your progress</Text>
+            <TouchableOpacity onPress={onClose}><Text style={styles.close}>✕</Text></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <View style={styles.statGrid}>
+              {cards.map((c) => (
+                <View key={c.label} style={styles.statCard}>
+                  <Text style={styles.statValue}>{c.value}</Text>
+                  <Text style={styles.statLabel}>{c.label}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={[styles.label, { marginTop: 18 }]}>Recent tests</Text>
+            {!progress || progress.recent.length === 0 ? (
+              <Text style={styles.muted}>Take a Mock Test to start tracking progress.</Text>
+            ) : (
+              progress.recent.map((a, i) => (
+                <View key={i} style={styles.attemptRow}>
+                  <Text style={[styles.body, { flex: 1 }]} numberOfLines={1}>{a.topic}</Text>
+                  <Text style={{ color: a.percent >= 60 ? C.accent : C.amber, fontWeight: "700" }}>{a.percent}%</Text>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -195,7 +342,22 @@ function Chip({ label, active, onPress, small }: { label: string; active: boolea
 
 function ActionBar({ mode, data, lang }: { mode: string; data: any; lang: string }) {
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const text = toText(mode, data);
+
+  async function save() {
+    if (saved) return;
+    await saveItem({
+      id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      title: data.title || (mode === "answer" ? "Doubt answer" : "VidhyaAI"),
+      mode,
+      data,
+      lang,
+      savedAt: Date.now(),
+    });
+    setSaved(true);
+  }
+
   return (
     <View style={styles.actions}>
       <TouchableOpacity style={styles.action} onPress={() => playTTS(text, lang, setBusy)} disabled={busy}>
@@ -203,6 +365,9 @@ function ActionBar({ mode, data, lang }: { mode: string; data: any; lang: string
       </TouchableOpacity>
       <TouchableOpacity style={styles.action} onPress={() => Share.share({ message: text })}>
         <Text style={styles.actionText}>↗ Share</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.action, saved && { borderColor: C.accent }]} onPress={save}>
+        <Text style={[styles.actionText, saved && { color: C.accent }]}>{saved ? "★ Saved" : "☆ Save"}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -289,7 +454,7 @@ function TestView({ data }: { data: any }) {
         <TouchableOpacity
           style={[styles.btn, answered < total && { opacity: 0.5 }]}
           disabled={answered < total}
-          onPress={() => setSubmitted(true)}
+          onPress={() => { recordTest(data.title, score, total); setSubmitted(true); }}
         >
           <Text style={styles.btnText}>{answered < total ? `Answer all ${total}` : "Submit ✓"}</Text>
         </TouchableOpacity>
@@ -411,12 +576,23 @@ function Course({ data }: { data: any }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: Platform.OS === "android" ? 12 : 4,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
+  navBtn: {
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  navBtnText: { fontSize: 16 },
   brand: { fontSize: 24, fontWeight: "700", color: C.primary },
   brandSub: { fontSize: 12, color: C.muted, marginTop: 2 },
   label: { color: C.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
@@ -463,5 +639,24 @@ const styles = StyleSheet.create({
   topicChip: {
     borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
     paddingHorizontal: 10, paddingVertical: 3, color: C.muted, fontSize: 12,
+  },
+  modalWrap: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  sheet: { maxHeight: "82%", backgroundColor: "#0d0f17", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: C.border },
+  sheetHead: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  sheetTitle: { color: C.fg, fontSize: 18, fontWeight: "700" },
+  close: { color: C.muted, fontSize: 18, paddingHorizontal: 6 },
+  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  statCard: {
+    width: "47%", borderWidth: 1, borderColor: C.border, backgroundColor: C.card,
+    borderRadius: 14, paddingVertical: 16, alignItems: "center",
+  },
+  statValue: { color: C.primary, fontSize: 24, fontWeight: "800" },
+  statLabel: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginTop: 4 },
+  attemptRow: {
+    flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.border,
+    backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8,
   },
 });
