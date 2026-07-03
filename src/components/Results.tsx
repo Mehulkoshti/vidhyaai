@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { StudyMode } from "@/lib/sarvam";
 import { SpeakButton, CopyButton, DownloadButton, PrintButton } from "@/components/SpeakButton";
 import { ExamMode, type TestData } from "@/components/ExamMode";
+import { FlashcardReview } from "@/components/FlashcardReview";
+import type { SavedItem } from "@/lib/library";
 
 /* ---------- Types matching the Gemini schemas ---------- */
 export interface SummaryData {
@@ -86,11 +88,13 @@ export function Results({
   data,
   lang = "English",
   onStudyConcept,
+  onSave,
 }: {
   mode: StudyMode;
   data: unknown;
   lang?: string;
   onStudyConcept?: (topic: string, mode: StudyMode) => void;
+  onSave?: (item: SavedItem) => void;
 }) {
   // Test mode is fully interactive — no copy/listen action bar.
   if (mode === "test") return <ExamMode data={data as TestData} onStudyConcept={onStudyConcept} />;
@@ -107,6 +111,7 @@ export function Results({
         <CopyButton text={plain} />
         <PrintButton text={plain} title={title} />
         <DownloadButton text={plain} filename={fname} />
+        {onSave && <SaveButton mode={mode} data={data} lang={lang} title={title} onSave={onSave} />}
       </div>
 
       {mode === "summary" && <SummaryView data={data as SummaryData} />}
@@ -116,6 +121,46 @@ export function Results({
       {mode === "mindmap" && <MindMapView data={data as MindMapData} />}
       {mode === "planner" && <PlannerView data={data as PlannerData} />}
     </div>
+  );
+}
+
+function SaveButton({
+  mode,
+  data,
+  lang,
+  title,
+  onSave,
+}: {
+  mode: StudyMode;
+  data: unknown;
+  lang: string;
+  title: string;
+  onSave: (item: SavedItem) => void;
+}) {
+  const [saved, setSaved] = useState(false);
+  function save() {
+    if (saved) return;
+    onSave({
+      id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      title,
+      mode,
+      data,
+      lang,
+      savedAt: Date.now(),
+    });
+    setSaved(true);
+  }
+  return (
+    <button
+      onClick={save}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${
+        saved
+          ? "border-accent/50 bg-accent/10 text-accent"
+          : "border-border bg-white/[0.03] text-muted hover:border-primary/50 hover:text-foreground"
+      }`}
+    >
+      {saved ? <>★ Saved</> : <>☆ Save</>}
+    </button>
   );
 }
 
@@ -234,10 +279,29 @@ function QuizView({ data }: { data: QuizData }) {
 
 /* ---------- Flashcards ---------- */
 function FlashcardsView({ data }: { data: FlashcardsData }) {
+  const [reviewing, setReviewing] = useState(false);
+
+  if (reviewing) {
+    return (
+      <div className="animate-fade-up space-y-5">
+        <SectionTitle icon="🔁" title={`Revising: ${data.title}`} />
+        <FlashcardReview deck={data.title} cards={data.cards} onExit={() => setReviewing(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-up space-y-5">
-      <SectionTitle icon="🃏" title={data.title} />
-      <p className="text-sm text-muted">Tap a card to flip it. 👆</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionTitle icon="🃏" title={data.title} />
+        <button
+          onClick={() => setReviewing(true)}
+          className="rounded-lg border border-primary/50 bg-primary/10 px-3.5 py-1.5 text-sm font-medium text-foreground transition hover:bg-primary/20"
+        >
+          🔁 Revise (spaced repetition)
+        </button>
+      </div>
+      <p className="text-sm text-muted">Tap a card to flip it 👆 — or hit Revise to study them the smart way.</p>
       <div className="stagger grid gap-4 sm:grid-cols-2">
         {data.cards.map((c, i) => (
           <Flashcard key={i} front={c.front} back={c.back} index={i} />

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Certificate } from "@/components/Certificate";
 import type { StudyMode } from "@/lib/sarvam";
+import { recordTest } from "@/lib/stats";
 
 interface TestQuestion {
   question: string;
@@ -49,6 +50,7 @@ export function ExamMode({
   useEffect(() => {
     if (!submitted && timeLeft === 0) setSubmitted(true);
   }, [timeLeft, submitted]);
+  const recordedRef = useRef(false);
 
   const answeredCount = Object.keys(answers).length;
   const score = data.questions.reduce(
@@ -57,6 +59,14 @@ export function ExamMode({
   );
   const percent = Math.round((score / total) * 100);
   const passed = percent >= PASS_PERCENT;
+
+  // Record the attempt once, when the test is submitted.
+  useEffect(() => {
+    if (submitted && !recordedRef.current) {
+      recordedRef.current = true;
+      recordTest(data.title, score, total);
+    }
+  }, [submitted, data.title, score, total]);
 
   const weakConcepts = Array.from(
     new Set(
@@ -71,6 +81,7 @@ export function ExamMode({
     setSubmitted(false);
     setName("");
     setTimeLeft(total * SECONDS_PER_Q);
+    recordedRef.current = false;
   }
 
   /* ---------- Result screen ---------- */

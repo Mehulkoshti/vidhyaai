@@ -6,6 +6,8 @@ import { Results } from "@/components/Results";
 import { SpeakButton } from "@/components/SpeakButton";
 import { MicButton } from "@/components/MicButton";
 import type { StudyMode } from "@/lib/sarvam";
+import { loadLibrary, saveItem, removeItem, type SavedItem } from "@/lib/library";
+import { recordStudyDay, getProgress, type ProgressSummary } from "@/lib/stats";
 
 type InputMode = "ask" | StudyMode;
 
@@ -64,6 +66,9 @@ export default function ChatApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [library, setLibrary] = useState<SavedItem[]>([]);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [progress, setProgress] = useState<ProgressSummary | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -76,6 +81,7 @@ export default function ChatApp() {
     } catch {
       /* ignore */
     }
+    setLibrary(loadLibrary());
     setHydrated(true);
   }, []);
 
@@ -175,6 +181,7 @@ export default function ChatApp() {
           ? { id: newId(), role: "assistant", kind: "answer", text: json.data.answer, lang }
           : { id: newId(), role: "assistant", kind: "study", mode, data: json.data, lang };
       setMessages((m) => [...m, aMsg]);
+      recordStudyDay();
     } catch (e: unknown) {
       setMessages((m) => [
         ...m,
@@ -204,6 +211,7 @@ export default function ChatApp() {
         ...m,
         { id: newId(), role: "assistant", kind: "study", mode: studyMode, data: json.data, lang },
       ]);
+      recordStudyDay();
     } catch (e: unknown) {
       setMessages((m) => [
         ...m,
@@ -212,6 +220,20 @@ export default function ChatApp() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function saveToLibrary(item: SavedItem) {
+    setLibrary(saveItem(item));
+  }
+  function deleteSaved(id: string) {
+    setLibrary(removeItem(id));
+  }
+  function openSaved(item: SavedItem) {
+    setMessages((m) => [
+      ...m,
+      { id: newId(), role: "assistant", kind: "study", mode: item.mode, data: item.data, lang: item.lang },
+    ]);
+    setShowLibrary(false);
   }
 
   const activeMode = MODES.find((m) => m.key === mode)!;
@@ -224,13 +246,38 @@ export default function ChatApp() {
         <Link href="/" className="font-serif text-lg font-semibold">
           <span className="text-gradient">VidhyaAI</span>
         </Link>
-        <button
-          onClick={newChat}
-          className="rounded-lg border border-border bg-white/[0.03] px-3 py-1.5 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
-        >
-          ＋ New chat
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setProgress(getProgress())}
+            className="rounded-lg border border-border bg-white/[0.03] px-3 py-1.5 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
+          >
+            📊 Progress
+          </button>
+          <button
+            onClick={() => setShowLibrary(true)}
+            className="rounded-lg border border-border bg-white/[0.03] px-3 py-1.5 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
+          >
+            📚 Saved{library.length > 0 ? ` (${library.length})` : ""}
+          </button>
+          <button
+            onClick={newChat}
+            className="rounded-lg border border-border bg-white/[0.03] px-3 py-1.5 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
+          >
+            ＋ New chat
+          </button>
+        </div>
       </header>
+
+      {showLibrary && (
+        <LibraryDrawer
+          items={library}
+          onClose={() => setShowLibrary(false)}
+          onOpen={openSaved}
+          onDelete={deleteSaved}
+        />
+      )}
+
+      {progress && <ProgressDrawer p={progress} onClose={() => setProgress(null)} />}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
@@ -262,7 +309,7 @@ export default function ChatApp() {
 
           <div className="space-y-5">
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} onStudyConcept={runStudy} />
+              <MessageBubble key={m.id} message={m} onStudyConcept={runStudy} onSave={saveToLibrary} />
             ))}
 
             {loading && (
@@ -385,9 +432,11 @@ export default function ChatApp() {
 function MessageBubble({
   message,
   onStudyConcept,
+  onSave,
 }: {
   message: Message;
   onStudyConcept: (topic: string, mode: StudyMode) => void;
+  onSave: (item: SavedItem) => void;
 }) {
   if (message.role === "user") {
     const m = MODES.find((x) => x.key === message.mode);
@@ -426,7 +475,126 @@ function MessageBubble({
   // study card
   return (
     <div className="glass rounded-2xl p-5 sm:p-6 animate-fade-up">
-      <Results mode={message.mode} data={message.data} lang={message.lang} onStudyConcept={onStudyConcept} />
+      <Results mode={message.mode} data={message.data} lang={message.lang} onStudyConcept={onStudyConcept} onSave={onSave} />
+    </div>
+  );
+}
+
+/* ---------- Saved library drawer ---------- */
+function LibraryDrawer({
+  items,
+  onClose,
+  onOpen,
+  onDelete,
+}: {
+  items: SavedItem[];
+  onClose: () => void;
+  onOpen: (item: SavedItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-up" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-sm flex-col border-l border-border bg-background/95 backdrop-blur">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <span className="font-serif text-lg">📚 Saved decks</span>
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-muted hover:text-foreground" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {items.length === 0 ? (
+            <p className="mt-10 text-center text-sm text-muted">
+              Nothing saved yet. Hit <span className="text-foreground">☆ Save</span> on any result to keep it here — it stays even after you close the tab.
+            </p>
+          ) : (
+            <div className="space-y-2.5">
+              {items.map((it) => {
+                const m = MODES.find((x) => x.key === it.mode);
+                return (
+                  <div key={it.id} className="rounded-xl border border-border bg-white/[0.02] p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-foreground">{it.title}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {m?.icon} {m?.label} · {it.lang}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        onClick={() => onOpen(it)}
+                        className="rounded-lg border border-primary/50 bg-primary/10 px-3 py-1 text-xs text-foreground transition hover:bg-primary/20"
+                      >
+                        Open
+                      </button>
+                      <button
+                        onClick={() => onDelete(it.id)}
+                        className="rounded-lg border border-border bg-white/[0.03] px-3 py-1 text-xs text-muted transition hover:border-rose-500/50 hover:text-rose-300"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ---------- Progress dashboard drawer ---------- */
+function ProgressDrawer({ p, onClose }: { p: ProgressSummary; onClose: () => void }) {
+  const cards = [
+    { label: "Day streak", value: `${p.streak}🔥` },
+    { label: "Tests taken", value: p.attempts },
+    { label: "Avg score", value: `${p.avgPercent}%` },
+    { label: "Best score", value: `${p.bestPercent}%` },
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-up" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-sm flex-col border-l border-border bg-background/95 backdrop-blur">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <span className="font-serif text-lg">📊 Your progress</span>
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-muted hover:text-foreground" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {cards.map((c) => (
+              <div key={c.label} className="rounded-xl border border-border bg-white/[0.02] p-4 text-center">
+                <div className="font-serif text-2xl font-semibold text-gradient">{c.value}</div>
+                <div className="mt-1 text-xs uppercase tracking-wide text-muted">{c.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 mb-2 text-sm font-medium text-muted">Recent tests</p>
+          {p.recent.length === 0 ? (
+            <p className="text-sm text-muted/70">Take a Mock Test to start tracking your progress here.</p>
+          ) : (
+            <div className="space-y-2">
+              {p.recent.map((a, i) => (
+                <div key={i} className="flex items-center justify-between rounded-xl border border-border bg-white/[0.02] px-3 py-2.5">
+                  <span className="min-w-0 truncate pr-2 text-sm text-foreground/90">{a.topic}</span>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      a.percent >= 60 ? "bg-accent/15 text-accent" : "bg-amber-400/15 text-amber-300"
+                    }`}
+                  >
+                    {a.percent}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }
