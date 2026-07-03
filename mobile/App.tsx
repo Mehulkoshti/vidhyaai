@@ -15,7 +15,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { createAudioPlayer } from "expo-audio";
+import {
+  AudioModule,
+  createAudioPlayer,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import {
   getProgress,
@@ -119,8 +125,47 @@ export default function App() {
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [progressOpen, setProgressOpen] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const isAsk = mode === "ask";
+
+  // Voice input via Sarvam Saaras STT: record → send audio to /api/stt → fill topic.
+  async function toggleMic() {
+    try {
+      if (recording) {
+        setRecording(false);
+        await recorder.stop();
+        const uri = recorder.uri;
+        if (!uri) return;
+        setTranscribing(true);
+        const fd = new FormData();
+        fd.append("file", { uri, name: "audio.m4a", type: "audio/m4a" } as any);
+        fd.append("lang", lang);
+        const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
+        const json = await res.json();
+        if (res.ok && json.transcript) {
+          setTopic((t) => (t ? `${t} ${json.transcript}` : json.transcript));
+        }
+      } else {
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert("Microphone", "Please allow microphone access to use voice input.");
+          return;
+        }
+        await setAudioModeAsync({ allowsRecording: true });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+        setRecording(true);
+      }
+    } catch {
+      Alert.alert("Voice input", "Couldn't capture audio on this device.");
+      setRecording(false);
+    } finally {
+      setTranscribing(false);
+    }
+  }
 
   async function openSaved() {
     setSavedItems(await loadLibrary());
@@ -201,7 +246,22 @@ export default function App() {
             ))}
           </ScrollView>
 
-          <Text style={styles.label}>{isAsk ? "Your question" : "Topic / notes"}</Text>
+          <View style={styles.labelRow}>
+            <Text style={[styles.label, { marginBottom: 0 }]}>{isAsk ? "Your question" : "Topic / notes"}</Text>
+            <TouchableOpacity
+              onPress={toggleMic}
+              disabled={transcribing}
+              style={[styles.micBtn, recording && styles.micActive]}
+            >
+              {transcribing ? (
+                <ActivityIndicator size="small" color={C.accent} />
+              ) : (
+                <Text style={[styles.micText, recording && { color: C.rose }]}>
+                  {recording ? "⏺ Stop" : "🎤 Speak"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
           <TextInput
             style={styles.input}
             placeholder={isAsk ? "Ask a doubt…" : "e.g. Photosynthesis, Newton's laws…"}
@@ -596,6 +656,13 @@ const styles = StyleSheet.create({
   brand: { fontSize: 24, fontWeight: "700", color: C.primary },
   brandSub: { fontSize: 12, color: C.muted, marginTop: 2 },
   label: { color: C.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
+  labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  micBtn: {
+    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  micActive: { borderColor: C.rose, backgroundColor: "rgba(251,113,133,0.12)" },
+  micText: { color: C.muted, fontSize: 12 },
   chip: {
     borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
     paddingHorizontal: 14, paddingVertical: 8, marginRight: 8,

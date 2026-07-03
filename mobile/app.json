@@ -28,7 +28,10 @@
       "apiBase": "https://vidhya-ai-01.netlify.app"
     },
     "plugins": [
-      "expo-audio"
+      [
+        "expo-audio",
+        { "microphonePermission": "Allow VidhyaAI to use the microphone for voice input." }
+      ]
     ]
   }
 }
