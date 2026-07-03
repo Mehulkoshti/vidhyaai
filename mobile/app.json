@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "VidhyaAI",
+    "slug": "vidhyaai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#07080d",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mehulkoshti.vidhyaai"
+    },
+    "android": {
+      "package": "com.mehulkoshti.vidhyaai",
+      "adaptiveIcon": {
+        "backgroundColor": "#07080d",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "apiBase": "https://vidhya-ai-01.netlify.app"
+    }
+  }
+}

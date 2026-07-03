@@ -28,9 +28,9 @@ India-first, VidhyaAI genuinely teaches in Hindi, Marathi, Tamil and Bengali —
 not just translated English. Built for students who study in their own language.
 ```
 
-**GitHub Link** — `https://github.com/<your-username>/vidyaai`  *(push the repo, then paste)*
+**GitHub Link** — `https://github.com/Mehulkoshti/vidhyaai`  *(monorepo: web at root, mobile in `/mobile`)*
 
-**Live Link** — `https://<your-app>.netlify.app`  *(after deploy)*
+**Live Link** — `https://<your-app>.netlify.app`  *(deployed web app)*
 
 **Demo Video Link** — `https://youtube.com/...`  *(2–3 min screen recording)*
 
@@ -38,14 +38,20 @@ not just translated English. Built for students who study in their own language.
 
 **Tags**
 ```
-Next.js, React, TypeScript, Tailwind CSS, Sarvam AI, EdTech, Multilingual, LLM, TTS, OCR
+Next.js, React, TypeScript, Tailwind CSS, Sarvam AI, Expo, React Native, EdTech, Multilingual, LLM, TTS, OCR
 ```
 
-**Select Tracks** → ✅ **Sarvam Track - Build AI Applications with Sarvam AI**
+**Select Tracks** → ✅ **Sarvam Track** + ✅ **Expo Track** *(tracks are multi-select — claim both)*
 
 **Select Themes** →
 - ✅ 🎓 **Learning & Knowledge Systems** (primary)
 - ✅ 🧠 **Human Experience & Productivity** (secondary — personal learning/productivity tool)
+
+**Any additional project links** (one per line) →
+```
+Mobile app (Expo APK): <paste EAS build .apk link>
+Mobile source: https://github.com/Mehulkoshti/vidhyaai/tree/main/mobile
+```
 
 ---
 
@@ -81,6 +87,27 @@ Architecture: Next.js 16 App Router; all Sarvam calls proxied through server API
 routes so the subscription key never reaches the browser. A built-in mock mode let
 us build the entire UI without spending credits, and TTS/Vision are gated behind
 explicit user actions to keep credit usage minimal.
+```
+
+---
+
+## Additional Question: "If you have used Expo to build your mobile App, explain how you used it in detail"
+
+```
+We built a native VidhyaAI mobile app with Expo (SDK 57) + React Native + TypeScript
+(in the /mobile folder of the repo). It's a thin native client that reuses the exact
+same deployed backend as the web app — it calls our /api/generate endpoint, so all
+Sarvam AI calls stay server-side and no API key ever ships inside the app.
+
+The app lets students pick a study mode (Summary, Explain, Quiz, Flashcards, Mind Map,
+Planner) and any of 12 languages, type a topic, and get AI study material rendered
+natively: interactive quizzes (tap an option to reveal the answer), tappable flip
+flashcards, mind-map branches, and day-by-day planners — in a dark, branded UI.
+
+Expo tooling: developed and previewed with `npx expo start` on Expo Go, bundled with
+Expo's Metro exporter, and packaged into an installable Android APK via EAS Build
+(`eas build -p android`). Expo let one developer ship a real cross-platform mobile
+app on top of the existing web backend in a fraction of the usual native effort.
 ```
 
 ---
@@ -124,10 +151,12 @@ Title: **"Building VidhyaAI: an India-first AI study companion on Sarvam AI"**
 
 - [ ] Add real `SARVAM_API_KEY` to `.env.local`, set `SARVAM_MOCK=0`, run ~5 verify calls
 - [ ] Push repo to GitHub → paste GitHub link
-- [ ] Deploy to Netlify → paste Live link
-- [ ] Record 2–3 min demo video → paste Demo link
-- [ ] Fill Create Project form (fields above) + select Sarvam track + themes
-- [ ] Answer the "How you used Sarvam" question (text above)
+- [ ] Deploy web to Netlify (SARVAM_API_KEY env) → paste Live link
+- [ ] Point `mobile/App.tsx` `API_BASE` at the live URL; `eas build -p android` → get APK link
+- [ ] Record 2–3 min demo video (show web + mobile + Hindi voice) → paste Demo link
+- [ ] Fill Create Project form + select **Sarvam + Expo** tracks + 2 themes
+- [ ] Paste mobile APK + mobile source in "Any additional project links"
+- [ ] Answer "How you used Sarvam" and "How you used Expo" (text above)
 - [ ] Post on LinkedIn/X tagging NAMESPACE + Sarvam → paste link
 - [ ] (Bonus) Publish blog + share badge on social
 - [ ] Click **Submit Project** before 13 July 11:59 PM
