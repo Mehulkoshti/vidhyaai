@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@netlify/blobs": "^10.7.9",
     "fflate": "^0.8.3",
     "next": "16.2.9",
     "pdf-lib": "^1.17.1",

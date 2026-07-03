@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ transcript: "Explain this topic in simple terms (mock voice input)" });
     }
 
-    const form = await req.formData();
+    const form = (await req.formData()) as unknown as {
+      get(name: string): unknown;
+    };
     const file = form.get("file");
     const lang = (form.get("lang") as string) || "";
     if (!(file instanceof File)) {

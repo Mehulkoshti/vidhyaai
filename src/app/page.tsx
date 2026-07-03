@@ -55,12 +55,17 @@ export default function Landing() {
         <span className="font-serif text-xl font-semibold">
           <span className="text-gradient">VidhyaAI</span>
         </span>
-        <Link
-          href="/app"
-          className="btn-glow rounded-xl px-5 py-2 text-sm font-medium text-white"
-        >
-          Open App →
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/classroom" className="text-sm text-muted transition hover:text-foreground">
+            👩‍🏫 Classroom
+          </Link>
+          <Link
+            href="/app"
+            className="btn-glow rounded-xl px-5 py-2 text-sm font-medium text-white"
+          >
+            Open App →
+          </Link>
+        </div>
       </nav>
 
       {/* Hero (with floating decorations) */}
