@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Certificate } from "@/components/Certificate";
+import type { StudyMode } from "@/lib/sarvam";
 
 interface TestQuestion {
   question: string;
@@ -16,13 +17,39 @@ export interface TestData {
 }
 
 const PASS_PERCENT = 60;
+const SECONDS_PER_Q = 60; // 1 minute per question
 
-export function ExamMode({ data }: { data: TestData }) {
+function fmtTime(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+export function ExamMode({
+  data,
+  onStudyConcept,
+}: {
+  data: TestData;
+  onStudyConcept?: (topic: string, mode: StudyMode) => void;
+}) {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
   const [name, setName] = useState("");
 
   const total = data.questions.length;
+  const [timeLeft, setTimeLeft] = useState(total * SECONDS_PER_Q);
+
+  // Countdown while taking the test; auto-submit when time runs out.
+  useEffect(() => {
+    if (submitted) return;
+    const t = setInterval(() => setTimeLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [submitted]);
+
+  useEffect(() => {
+    if (!submitted && timeLeft === 0) setSubmitted(true);
+  }, [timeLeft, submitted]);
+
   const answeredCount = Object.keys(answers).length;
   const score = data.questions.reduce(
     (acc, q, i) => acc + (answers[i] === q.answerIndex ? 1 : 0),
@@ -43,6 +70,7 @@ export function ExamMode({ data }: { data: TestData }) {
     setAnswers({});
     setSubmitted(false);
     setName("");
+    setTimeLeft(total * SECONDS_PER_Q);
   }
 
   /* ---------- Result screen ---------- */
@@ -94,10 +122,27 @@ export function ExamMode({ data }: { data: TestData }) {
               📌 You need {PASS_PERCENT}% to earn a certificate. Focus on these to improve:
             </p>
             {weakConcepts.length > 0 ? (
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {weakConcepts.map((c) => (
-                  <li key={c} className="flex gap-2 text-sm text-foreground/90">
-                    <span className="text-amber-300">→</span> Revise <span className="font-medium">{c}</span>
+                  <li key={c} className="flex flex-wrap items-center gap-2 text-sm text-foreground/90">
+                    <span className="text-amber-300">→</span>
+                    <span className="font-medium">{c}</span>
+                    {onStudyConcept && (
+                      <span className="flex gap-1.5">
+                        <button
+                          onClick={() => onStudyConcept(c, "flashcards")}
+                          className="rounded-lg border border-border bg-white/[0.03] px-2.5 py-1 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
+                        >
+                          🃏 Flashcards
+                        </button>
+                        <button
+                          onClick={() => onStudyConcept(c, "explain")}
+                          className="rounded-lg border border-border bg-white/[0.03] px-2.5 py-1 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
+                        >
+                          💡 Explain
+                        </button>
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -105,8 +150,7 @@ export function ExamMode({ data }: { data: TestData }) {
               <p className="text-sm text-muted">Review the explanations below and retake the test.</p>
             )}
             <p className="mt-3 text-sm text-muted">
-              Tip: generate <span className="text-foreground/90">Flashcards</span> or an{" "}
-              <span className="text-foreground/90">Explain</span> for these topics, then retake. You&apos;ve got this! 💡
+              Tap a button above to instantly revise a weak topic, then retake. You&apos;ve got this! 💡
             </p>
           </div>
         )}
@@ -154,9 +198,20 @@ export function ExamMode({ data }: { data: TestData }) {
           <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white/[0.04] text-lg">📝</span>
           <h2 className="font-serif text-2xl text-foreground">{data.title}</h2>
         </div>
-        <span className="rounded-full border border-border bg-white/[0.03] px-4 py-1.5 text-sm text-muted">
-          {answeredCount}/{total} answered
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full border px-4 py-1.5 text-sm font-medium tabular-nums ${
+              timeLeft <= 60
+                ? "border-rose-500/50 bg-rose-500/10 text-rose-300 animate-pulse"
+                : "border-border bg-white/[0.03] text-muted"
+            }`}
+          >
+            ⏱️ {fmtTime(timeLeft)}
+          </span>
+          <span className="rounded-full border border-border bg-white/[0.03] px-4 py-1.5 text-sm text-muted">
+            {answeredCount}/{total} answered
+          </span>
+        </div>
       </div>
 
       {data.questions.map((q, qi) => (

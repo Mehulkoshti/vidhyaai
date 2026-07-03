@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Results } from "@/components/Results";
 import { SpeakButton } from "@/components/SpeakButton";
+import { MicButton } from "@/components/MicButton";
 import type { StudyMode } from "@/lib/sarvam";
 
 type InputMode = "ask" | StudyMode;
@@ -19,7 +20,10 @@ const MODES: { key: InputMode; label: string; icon: string }[] = [
   { key: "planner", label: "Planner", icon: "📅" },
 ];
 
-const LANGS = ["English", "Hindi", "Hinglish", "Marathi", "Tamil", "Bengali"];
+const LANGS = [
+  "English", "Hindi", "Hinglish", "Marathi", "Tamil", "Bengali",
+  "Telugu", "Kannada", "Gujarati", "Malayalam", "Punjabi", "Odia",
+];
 
 type Message =
   | { id: string; role: "user"; text: string; mode: InputMode; fileName?: string }
@@ -181,6 +185,35 @@ export default function ChatApp() {
     }
   }
 
+  // Programmatically generate study material for a topic (used by "revise this
+  // weak concept" buttons after a mock test). Shares the /api/generate flow.
+  async function runStudy(topic: string, studyMode: StudyMode) {
+    if (loading) return;
+    const userMsg: Message = { id: newId(), role: "user", text: topic, mode: studyMode };
+    setMessages((m) => [...m, userMsg]);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: studyMode, topic, lang }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to generate");
+      setMessages((m) => [
+        ...m,
+        { id: newId(), role: "assistant", kind: "study", mode: studyMode, data: json.data, lang },
+      ]);
+    } catch (e: unknown) {
+      setMessages((m) => [
+        ...m,
+        { id: newId(), role: "assistant", kind: "error", text: e instanceof Error ? e.message : "Something went wrong" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const activeMode = MODES.find((m) => m.key === mode)!;
   const isEmpty = messages.length === 0;
 
@@ -229,7 +262,7 @@ export default function ChatApp() {
 
           <div className="space-y-5">
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble key={m.id} message={m} onStudyConcept={runStudy} />
             ))}
 
             {loading && (
@@ -294,6 +327,12 @@ export default function ChatApp() {
               📎
             </button>
 
+            <MicButton
+              lang={lang}
+              disabled={loading}
+              onTranscript={(t) => setInput((prev) => (prev ? `${prev} ${t}` : t))}
+            />
+
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -343,7 +382,13 @@ export default function ChatApp() {
 }
 
 /* ---------- Message bubble ---------- */
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  onStudyConcept,
+}: {
+  message: Message;
+  onStudyConcept: (topic: string, mode: StudyMode) => void;
+}) {
   if (message.role === "user") {
     const m = MODES.find((x) => x.key === message.mode);
     return (
@@ -381,7 +426,7 @@ function MessageBubble({ message }: { message: Message }) {
   // study card
   return (
     <div className="glass rounded-2xl p-5 sm:p-6 animate-fade-up">
-      <Results mode={message.mode} data={message.data} lang={message.lang} />
+      <Results mode={message.mode} data={message.data} lang={message.lang} onStudyConcept={onStudyConcept} />
     </div>
   );
 }

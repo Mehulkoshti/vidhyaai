@@ -15,7 +15,7 @@ const POWERS = [
   { icon: "📸", title: "Photo / PDF → Notes", desc: "Snap your handwritten notes or upload a PDF. AI reads it natively and builds study material." },
   { icon: "💬", title: "Ask Any Doubt", desc: "Chat with an AI tutor that remembers your whole session — nothing disappears." },
   { icon: "🔊", title: "Listen Aloud", desc: "Natural, native-sounding voices via Sarvam's Bulbul — revise with your ears, in your language." },
-  { icon: "🌐", title: "Your Language", desc: "Powered by Sarvam AI, India's own LLM. English, Hindi, Hinglish, Marathi, Tamil, Bengali — study how you think." },
+  { icon: "🌐", title: "Your Language", desc: "Powered by Sarvam AI, India's own LLM. 12 languages — Hindi, Marathi, Tamil, Bengali, Telugu, Kannada, Gujarati & more — study how you think." },
 ];
 
 const STEPS = [
@@ -26,7 +26,7 @@ const STEPS = [
 
 const STATS = [
   { value: "8", label: "Study modes" },
-  { value: "6", label: "Languages" },
+  { value: "12", label: "Languages" },
   { value: "₹0", label: "Cost, forever" },
   { value: "∞", label: "Topics" },
 ];
@@ -41,7 +41,7 @@ const USE_CASES = [
 const FAQS = [
   { q: "Is it really free?", a: "Yes — VidhyaAI is 100% free. No sign-up, no credit card, no hidden limits for normal use." },
   { q: "Can it read my handwritten notes?", a: "Yes. Upload a photo or PDF and the AI reads it directly to build summaries, quizzes, and flashcards." },
-  { q: "Which languages are supported?", a: "English, Hindi, Hinglish, Marathi, Tamil and Bengali — with more on the way." },
+  { q: "Which languages are supported?", a: "12 — English, Hindi, Hinglish, Marathi, Tamil, Bengali, Telugu, Kannada, Gujarati, Malayalam, Punjabi and Odia, powered by Sarvam AI." },
   { q: "Do my chats get saved?", a: "Your session stays in your browser until you close the tab. Nothing is stored on a server, so it's private." },
   { q: "Is the AI always right?", a: "It's very good, but like any AI it can occasionally slip. Always verify critical facts before an exam." },
 ];

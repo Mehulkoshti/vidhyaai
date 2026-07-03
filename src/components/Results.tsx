@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { StudyMode } from "@/lib/sarvam";
-import { SpeakButton, CopyButton, DownloadButton } from "@/components/SpeakButton";
+import { SpeakButton, CopyButton, DownloadButton, PrintButton } from "@/components/SpeakButton";
 import { ExamMode, type TestData } from "@/components/ExamMode";
 
 /* ---------- Types matching the Gemini schemas ---------- */
@@ -81,12 +81,23 @@ function toText(mode: StudyMode, data: unknown): string {
   return `${d.title}\n\nExplain like I'm 5:\n${d.eli5}\n\nIn depth:\n${d.detailed}\n\nAnalogy:\n${d.analogy}`;
 }
 
-export function Results({ mode, data, lang = "English" }: { mode: StudyMode; data: unknown; lang?: string }) {
+export function Results({
+  mode,
+  data,
+  lang = "English",
+  onStudyConcept,
+}: {
+  mode: StudyMode;
+  data: unknown;
+  lang?: string;
+  onStudyConcept?: (topic: string, mode: StudyMode) => void;
+}) {
   // Test mode is fully interactive — no copy/listen action bar.
-  if (mode === "test") return <ExamMode data={data as TestData} />;
+  if (mode === "test") return <ExamMode data={data as TestData} onStudyConcept={onStudyConcept} />;
 
   const plain = toText(mode, data);
   const fname = `vidhyaai-${mode}.txt`;
+  const title = (data as { title?: string })?.title || "VidhyaAI Notes";
 
   return (
     <div>
@@ -94,6 +105,7 @@ export function Results({ mode, data, lang = "English" }: { mode: StudyMode; dat
       <div className="mb-5 flex flex-wrap justify-end gap-2">
         <SpeakButton text={plain} lang={lang} />
         <CopyButton text={plain} />
+        <PrintButton text={plain} title={title} />
         <DownloadButton text={plain} filename={fname} />
       </div>
 

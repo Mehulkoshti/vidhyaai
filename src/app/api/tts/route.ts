@@ -24,6 +24,12 @@ const LANG_CODE: Record<string, string> = {
   Marathi: "mr-IN",
   Tamil: "ta-IN",
   Bengali: "bn-IN",
+  Telugu: "te-IN",
+  Kannada: "kn-IN",
+  Gujarati: "gu-IN",
+  Malayalam: "ml-IN",
+  Punjabi: "pa-IN",
+  Odia: "od-IN",
 };
 
 export async function POST(req: NextRequest) {
