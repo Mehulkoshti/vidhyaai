@@ -19,19 +19,31 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiBase": "https://vidhya-ai-01.netlify.app"
+      "apiBase": "https://vidhya-ai-01.netlify.app",
+      "eas": {
+        "projectId": "caf91b1a-e6a6-46de-a8ae-d478e5641ee9"
+      }
     },
     "plugins": [
       [
         "expo-audio",
-        { "microphonePermission": "Allow VidhyaAI to use the microphone for voice input." }
+        {
+          "microphonePermission": "Allow VidhyaAI to use the microphone for voice input."
+        }
       ]
-    ]
+    ],
+    "owner": "mehulkoshti"
   }
 }
