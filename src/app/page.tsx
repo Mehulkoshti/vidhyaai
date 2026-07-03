@@ -56,8 +56,11 @@ export default function Landing() {
           <span className="text-gradient">VidhyaAI</span>
         </span>
         <div className="flex items-center gap-3">
-          <Link href="/classroom" className="text-sm text-muted transition hover:text-foreground">
+          <Link href="/classroom" className="hidden text-sm text-muted transition hover:text-foreground sm:inline">
             👩‍🏫 Classroom
+          </Link>
+          <Link href="/rooms" className="hidden text-sm text-muted transition hover:text-foreground sm:inline">
+            🤝 Rooms
           </Link>
           <Link
             href="/app"
