@@ -1,10 +1,12 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -12,11 +14,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { createAudioPlayer } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 
 /**
- * VidhyaAI mobile (Expo). A thin, native client for the same VidhyaAI backend
- * that powers the web app — so every AI call runs on Sarvam AI server-side and
- * no API key ever lives in the app. Point API_BASE at your deployed web app.
+ * VidhyaAI mobile (Expo). A native client for the same VidhyaAI backend that
+ * powers the web app — every AI call runs on Sarvam AI server-side, so no API
+ * key ever ships in the app. Point API_BASE at your deployed web app.
  */
 const API_BASE = "https://vidhya-ai-01.netlify.app";
 
@@ -30,6 +34,7 @@ const C = {
   primary2: "#a78bfa",
   accent: "#38e0b0",
   rose: "#fb7185",
+  amber: "#fbbf24",
 };
 
 const MODES = [
@@ -37,14 +42,60 @@ const MODES = [
   { key: "explain", label: "Explain", icon: "💡" },
   { key: "quiz", label: "Quiz", icon: "🎯" },
   { key: "flashcards", label: "Flashcards", icon: "🃏" },
+  { key: "test", label: "Mock Test", icon: "🧪" },
   { key: "mindmap", label: "Mind Map", icon: "🗺️" },
   { key: "planner", label: "Planner", icon: "📅" },
+  { key: "course", label: "Course", icon: "📖" },
+  { key: "ask", label: "Ask", icon: "💬" },
 ];
 
 const LANGS = [
   "English", "Hindi", "Hinglish", "Marathi", "Tamil", "Bengali",
   "Telugu", "Kannada", "Gujarati", "Malayalam", "Punjabi", "Odia",
 ];
+
+/* ---------- Sarvam TTS playback (native voice) ---------- */
+let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
+
+async function playTTS(text: string, lang: string, setBusy: (b: boolean) => void) {
+  try {
+    setBusy(true);
+    if (currentPlayer) {
+      try { currentPlayer.remove(); } catch {}
+      currentPlayer = null;
+    }
+    const res = await fetch(`${API_BASE}/api/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text.slice(0, 2500), lang }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.mock || !json.audio) {
+      Alert.alert("Listen", "Voice needs the live Sarvam key — it works once the app is deployed with the key.");
+      return;
+    }
+    const uri = FileSystem.cacheDirectory + `tts-${Date.now()}.mp3`;
+    await FileSystem.writeAsStringAsync(uri, json.audio, { encoding: FileSystem.EncodingType.Base64 });
+    const player = createAudioPlayer({ uri });
+    currentPlayer = player;
+    player.play();
+  } catch {
+    Alert.alert("Listen", "Couldn't play audio on this device.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* ---------- Flatten a result to plain text (for Listen + Share) ---------- */
+function toText(mode: string, d: any): string {
+  if (mode === "summary") return `${d.title}\n\n${(d.keyPoints || []).map((p: string, i: number) => `${i + 1}. ${p}`).join("\n")}\n\n${d.summary}`;
+  if (mode === "explain") return `${d.title}\n\nELI5: ${d.eli5}\n\nIn depth: ${d.detailed}\n\nAnalogy: ${d.analogy}`;
+  if (mode === "answer") return d.answer;
+  if (mode === "mindmap") return `${d.title}\n\n${(d.branches || []).map((b: any) => `• ${b.title}\n${(b.nodes || []).map((n: string) => `  - ${n}`).join("\n")}`).join("\n\n")}`;
+  if (mode === "planner") return `${d.title}\n\n${(d.days || []).map((x: any) => `Day ${x.day} — ${x.focus}\n${(x.tasks || []).map((t: string) => `  • ${t}`).join("\n")}`).join("\n\n")}`;
+  if (mode === "course") return `${d.title}\n\n${d.overview}\n\n${(d.chapters || []).map((c: any, i: number) => `${i + 1}. ${c.title}\n   ${c.summary}`).join("\n\n")}`;
+  return d.title || "";
+}
 
 export default function App() {
   const [mode, setMode] = useState("summary");
@@ -54,23 +105,28 @@ export default function App() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ mode: string; data: any } | null>(null);
 
+  const isAsk = mode === "ask";
+
   async function generate() {
     if (!topic.trim()) {
-      setError("Enter a topic to study.");
+      setError(isAsk ? "Type your question." : "Enter a topic to study.");
       return;
     }
     setError("");
     setLoading(true);
     setResult(null);
     try {
+      const body = isAsk
+        ? { mode: "ask", question: topic.trim(), context: "general studies", lang }
+        : { mode, topic: topic.trim(), lang };
       const res = await fetch(`${API_BASE}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, topic: topic.trim(), lang }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Something went wrong");
-      setResult({ mode, data: json.data });
+      setResult({ mode: isAsk ? "answer" : mode, data: json.data });
     } catch (e: any) {
       setError(e?.message || "Could not reach VidhyaAI. Check your connection.");
     } finally {
@@ -81,28 +137,20 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        {/* Header */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <Text style={styles.brand}>
-            Vidhya<Text style={{ color: C.accent }}>AI</Text>
-          </Text>
+          <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
           <Text style={styles.brandSub}>AI Study Companion · Sarvam AI 🇮🇳</Text>
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-          {/* Mode chips */}
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 44 }} keyboardShouldPersistTaps="handled">
           <Text style={styles.label}>Mode</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
             {MODES.map((m) => (
-              <Chip key={m.key} active={mode === m.key} label={`${m.icon} ${m.label}`} onPress={() => setMode(m.key)} />
+              <Chip key={m.key} active={mode === m.key} label={`${m.icon} ${m.label}`} onPress={() => { setMode(m.key); setResult(null); }} />
             ))}
           </ScrollView>
 
-          {/* Language chips */}
           <Text style={styles.label}>Language</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
             {LANGS.map((l) => (
@@ -110,11 +158,10 @@ export default function App() {
             ))}
           </ScrollView>
 
-          {/* Topic input */}
-          <Text style={styles.label}>Topic / notes</Text>
+          <Text style={styles.label}>{isAsk ? "Your question" : "Topic / notes"}</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. Photosynthesis, Newton's laws…"
+            placeholder={isAsk ? "Ask a doubt…" : "e.g. Photosynthesis, Newton's laws…"}
             placeholderTextColor={C.muted}
             value={topic}
             onChangeText={setTopic}
@@ -124,16 +171,12 @@ export default function App() {
           {error ? <Text style={styles.error}>⚠️ {error}</Text> : null}
 
           <TouchableOpacity style={styles.btn} onPress={generate} disabled={loading} activeOpacity={0.85}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>✨ Generate</Text>
-            )}
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{isAsk ? "💬 Ask" : "✨ Generate"}</Text>}
           </TouchableOpacity>
 
           {result && (
             <View style={{ marginTop: 22 }}>
-              <Result mode={result.mode} data={result.data} />
+              <Result mode={result.mode} data={result.data} lang={lang} />
             </View>
           )}
         </ScrollView>
@@ -144,27 +187,43 @@ export default function App() {
 
 function Chip({ label, active, onPress, small }: { label: string; active: boolean; onPress: () => void; small?: boolean }) {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={[styles.chip, active && styles.chipActive, small && { paddingVertical: 6 }]}
-    >
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.chip, active && styles.chipActive, small && { paddingVertical: 6 }]}>
       <Text style={[styles.chipText, active && { color: C.fg }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
+function ActionBar({ mode, data, lang }: { mode: string; data: any; lang: string }) {
+  const [busy, setBusy] = useState(false);
+  const text = toText(mode, data);
+  return (
+    <View style={styles.actions}>
+      <TouchableOpacity style={styles.action} onPress={() => playTTS(text, lang, setBusy)} disabled={busy}>
+        {busy ? <ActivityIndicator size="small" color={C.accent} /> : <Text style={styles.actionText}>🔊 Listen</Text>}
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.action} onPress={() => Share.share({ message: text })}>
+        <Text style={styles.actionText}>↗ Share</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 /* ---------- Result renderers ---------- */
-function Result({ mode, data }: { mode: string; data: any }) {
+function Result({ mode, data, lang }: { mode: string; data: any; lang: string }) {
+  if (mode === "test") return <View style={styles.card}><TestView data={data} /></View>;
+
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>{data.title}</Text>
+      {mode !== "answer" && <Text style={styles.title}>{data.title}</Text>}
+      <ActionBar mode={mode} data={data} lang={lang} />
       {mode === "summary" && <Summary data={data} />}
       {mode === "explain" && <Explain data={data} />}
       {mode === "quiz" && <Quiz data={data} />}
       {mode === "flashcards" && <Flashcards data={data} />}
       {mode === "mindmap" && <MindMap data={data} />}
       {mode === "planner" && <Planner data={data} />}
+      {mode === "course" && <Course data={data} />}
+      {mode === "answer" && <Text style={styles.body}>{data.answer}</Text>}
     </View>
   );
 }
@@ -204,11 +263,47 @@ function Explain({ data }: { data: any }) {
 
 function Quiz({ data }: { data: any }) {
   const [picked, setPicked] = useState<Record<number, number>>({});
+  return <QuestionList questions={data.questions} picked={picked} setPicked={setPicked} />;
+}
+
+function TestView({ data }: { data: any }) {
+  const [picked, setPicked] = useState<Record<number, number>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const total = data.questions?.length || 0;
+  const answered = Object.keys(picked).length;
+  const score = (data.questions || []).reduce((a: number, q: any, i: number) => a + (picked[i] === q.answerIndex ? 1 : 0), 0);
+  const percent = total ? Math.round((score / total) * 100) : 0;
+
   return (
     <View>
-      {data.questions?.map((q: any, qi: number) => {
+      <Text style={styles.title}>{data.title}</Text>
+      {submitted && (
+        <View style={[styles.block, { borderColor: percent >= 60 ? C.accent : C.amber, alignItems: "center" }]}>
+          <Text style={{ fontSize: 32 }}>{percent >= 60 ? "🎉" : "💪"}</Text>
+          <Text style={[styles.title, { marginTop: 4 }]}>{score}/{total} ({percent}%)</Text>
+          <Text style={styles.muted}>{percent >= 60 ? "Great job!" : "Keep practising!"}</Text>
+        </View>
+      )}
+      <QuestionList questions={data.questions} picked={picked} setPicked={setPicked} reveal={submitted} />
+      {!submitted && (
+        <TouchableOpacity
+          style={[styles.btn, answered < total && { opacity: 0.5 }]}
+          disabled={answered < total}
+          onPress={() => setSubmitted(true)}
+        >
+          <Text style={styles.btnText}>{answered < total ? `Answer all ${total}` : "Submit ✓"}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function QuestionList({ questions, picked, setPicked, reveal }: { questions: any[]; picked: Record<number, number>; setPicked: (f: any) => void; reveal?: boolean }) {
+  return (
+    <View>
+      {questions?.map((q: any, qi: number) => {
         const chosen = picked[qi];
-        const answered = chosen !== undefined;
+        const answered = chosen !== undefined || reveal;
         return (
           <View key={qi} style={styles.block}>
             <Text style={styles.qText}>{qi + 1}. {q.question}</Text>
@@ -224,15 +319,15 @@ function Quiz({ data }: { data: any }) {
               return (
                 <TouchableOpacity
                   key={oi}
-                  disabled={answered}
-                  onPress={() => setPicked((p) => ({ ...p, [qi]: oi }))}
+                  disabled={chosen !== undefined}
+                  onPress={() => setPicked((p: any) => ({ ...p, [qi]: oi }))}
                   style={[styles.opt, { backgroundColor: bg, borderColor: bd }]}
                 >
                   <Text style={{ color: col }}>{String.fromCharCode(65 + oi)}. {opt}</Text>
                 </TouchableOpacity>
               );
             })}
-            {answered && <Text style={styles.why}>Why: {q.explanation}</Text>}
+            {answered && q.explanation ? <Text style={styles.why}>Why: {q.explanation}</Text> : null}
           </View>
         );
       })}
@@ -292,6 +387,27 @@ function Planner({ data }: { data: any }) {
   );
 }
 
+function Course({ data }: { data: any }) {
+  return (
+    <View>
+      <Text style={[styles.muted, { marginBottom: 10 }]}>{data.overview}</Text>
+      {data.chapters?.map((c: any, i: number) => (
+        <View key={i} style={styles.block}>
+          <Text style={styles.blockLabel}>{i + 1}. {c.title}</Text>
+          <Text style={styles.body}>{c.summary}</Text>
+          {c.topics?.length > 0 && (
+            <View style={styles.topicWrap}>
+              {c.topics.map((t: string) => (
+                <Text key={t} style={styles.topicChip}>{t}</Text>
+              ))}
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: {
@@ -305,79 +421,47 @@ const styles = StyleSheet.create({
   brandSub: { fontSize: 12, color: C.muted, marginTop: 2 },
   label: { color: C.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
   chip: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8,
+    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 8, marginRight: 8,
   },
   chipActive: { borderColor: C.primary, backgroundColor: "rgba(124,140,255,0.15)" },
   chipText: { color: C.muted, fontSize: 13 },
   input: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    borderRadius: 14,
-    padding: 14,
-    color: C.fg,
-    minHeight: 54,
-    fontSize: 15,
+    borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 14,
+    padding: 14, color: C.fg, minHeight: 54, fontSize: 15,
   },
   error: { color: C.rose, marginTop: 10, fontSize: 13 },
-  btn: {
-    marginTop: 16,
-    backgroundColor: C.primary,
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: "center",
-  },
+  btn: { marginTop: 16, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  card: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    borderRadius: 18,
-    padding: 16,
-  },
+  card: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 18, padding: 16 },
+  actions: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  action: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  actionText: { color: C.muted, fontSize: 13 },
   title: { color: C.fg, fontSize: 20, fontWeight: "700", marginBottom: 12 },
   row: { flexDirection: "row", gap: 10, marginBottom: 10, alignItems: "flex-start" },
   bullet: {
-    color: C.accent,
-    backgroundColor: "rgba(56,224,176,0.15)",
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    textAlign: "center",
-    lineHeight: 22,
-    fontSize: 12,
-    overflow: "hidden",
+    color: C.accent, backgroundColor: "rgba(56,224,176,0.15)", width: 22, height: 22, borderRadius: 11,
+    textAlign: "center", lineHeight: 22, fontSize: 12, overflow: "hidden",
   },
   body: { color: "rgba(238,240,246,0.9)", fontSize: 15, flex: 1, lineHeight: 22 },
   overviewLabel: { color: C.primary2, fontSize: 11, fontWeight: "700", letterSpacing: 1, marginTop: 12, marginBottom: 4 },
   muted: { color: C.muted, fontSize: 14, lineHeight: 21 },
   block: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: "rgba(255,255,255,0.02)",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12,
+    padding: 12, marginBottom: 10,
   },
   blockLabel: { color: C.fg, fontWeight: "600", marginBottom: 6 },
   qText: { color: C.fg, fontWeight: "600", marginBottom: 8 },
   opt: { borderWidth: 1, borderRadius: 10, padding: 11, marginBottom: 7 },
   why: { color: C.muted, fontSize: 13, marginTop: 4 },
   flash: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
-    minHeight: 90,
-    justifyContent: "center",
+    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 14, padding: 16,
+    marginBottom: 10, minHeight: 90, justifyContent: "center",
   },
   flashSide: { color: C.muted, fontSize: 10, letterSpacing: 1, marginBottom: 6 },
+  topicWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  topicChip: {
+    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 3, color: C.muted, fontSize: 12,
+  },
 });
