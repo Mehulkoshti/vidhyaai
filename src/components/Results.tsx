@@ -42,6 +42,11 @@ export interface PlannerData {
   totalDays: number;
   days: { day: number; focus: string; tasks: string[] }[];
 }
+export interface CourseData {
+  title: string;
+  overview: string;
+  chapters: { title: string; summary: string; topics: string[] }[];
+}
 
 /** Flattens structured result into plain text for copy / download / speech. */
 function toText(mode: StudyMode, data: unknown): string {
@@ -79,6 +84,15 @@ function toText(mode: StudyMode, data: unknown): string {
     );
   }
   if (mode === "test") return (data as TestData).title;
+  if (mode === "course") {
+    const d = data as CourseData;
+    return (
+      `${d.title}\n\n${d.overview}\n\n` +
+      d.chapters
+        .map((c, i) => `${i + 1}. ${c.title}\n   ${c.summary}\n   Topics: ${c.topics.join(", ")}`)
+        .join("\n\n")
+    );
+  }
   const d = data as ExplainData;
   return `${d.title}\n\nExplain like I'm 5:\n${d.eli5}\n\nIn depth:\n${d.detailed}\n\nAnalogy:\n${d.analogy}`;
 }
@@ -120,6 +134,7 @@ export function Results({
       {mode === "explain" && <ExplainView data={data as ExplainData} />}
       {mode === "mindmap" && <MindMapView data={data as MindMapData} />}
       {mode === "planner" && <PlannerView data={data as PlannerData} />}
+      {mode === "course" && <CourseView data={data as CourseData} onStudyConcept={onStudyConcept} />}
     </div>
   );
 }
@@ -404,6 +419,74 @@ function MindMapView({ data }: { data: MindMapData }) {
             </ul>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Course ---------- */
+const CH_ACTIONS: { label: string; mode: StudyMode }[] = [
+  { label: "📝 Summary", mode: "summary" },
+  { label: "💡 Explain", mode: "explain" },
+  { label: "🃏 Flashcards", mode: "flashcards" },
+  { label: "🎯 Quiz", mode: "quiz" },
+  { label: "📝 Test", mode: "test" },
+];
+
+function CourseView({
+  data,
+  onStudyConcept,
+}: {
+  data: CourseData;
+  onStudyConcept?: (topic: string, mode: StudyMode) => void;
+}) {
+  return (
+    <div className="animate-fade-up space-y-5">
+      <SectionTitle icon="📖" title={data.title} />
+      <div className="rounded-xl border border-border bg-white/[0.02] p-4">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary-2">Course overview</p>
+        <p className="leading-relaxed text-muted">{data.overview}</p>
+      </div>
+
+      <div className="stagger space-y-3">
+        {data.chapters.map((c, i) => {
+          const topic = c.topics.length ? `${c.title} (${c.topics.join(", ")})` : c.title;
+          return (
+            <div key={i} className="rounded-2xl border border-border bg-white/[0.02] p-4">
+              <div className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary-2 font-serif text-sm font-semibold text-white">
+                  {i + 1}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-foreground">{c.title}</p>
+                  <p className="mt-0.5 text-sm text-muted">{c.summary}</p>
+                  {c.topics.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {c.topics.map((t) => (
+                        <span key={t} className="rounded-full border border-border bg-white/[0.03] px-2.5 py-0.5 text-xs text-muted">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {onStudyConcept && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {CH_ACTIONS.map((a) => (
+                        <button
+                          key={a.mode}
+                          onClick={() => onStudyConcept(topic, a.mode)}
+                          className="rounded-lg border border-border bg-white/[0.03] px-2.5 py-1 text-xs text-muted transition hover:border-primary/50 hover:text-foreground"
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

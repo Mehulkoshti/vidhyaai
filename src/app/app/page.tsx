@@ -20,6 +20,7 @@ const MODES: { key: InputMode; label: string; icon: string }[] = [
   { key: "mindmap", label: "Mind Map", icon: "🗺️" },
   { key: "test", label: "Mock Test", icon: "📝" },
   { key: "planner", label: "Planner", icon: "📅" },
+  { key: "course", label: "Course", icon: "📖" },
 ];
 
 const LANGS = [

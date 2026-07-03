@@ -9,6 +9,7 @@ const MODES = [
   { icon: "📝", title: "Mock Test", desc: "A timed 10-question exam with a scored report card." },
   { icon: "🏆", title: "Certificate", desc: "Ace the test and download a branded certificate." },
   { icon: "📅", title: "Study Planner", desc: "Get a day-by-day revision plan up to your exam date." },
+  { icon: "📖", title: "Full Course", desc: "Turn a whole syllabus into a chapter-by-chapter course you can drill into." },
 ];
 
 const POWERS = [
@@ -25,7 +26,7 @@ const STEPS = [
 ];
 
 const STATS = [
-  { value: "8", label: "Study modes" },
+  { value: "9", label: "Study modes" },
   { value: "12", label: "Languages" },
   { value: "₹0", label: "Cost, forever" },
   { value: "∞", label: "Topics" },
@@ -205,7 +206,7 @@ export default function Landing() {
       {/* Modes */}
       <section id="features" className="mx-auto w-full max-w-5xl px-5 py-12 scroll-mt-10">
         <h2 className="text-center font-serif text-3xl font-semibold sm:text-4xl">
-          Eight ways to <span className="text-gradient">master</span> anything
+          Nine ways to <span className="text-gradient">master</span> anything
         </h2>
         <p className="mx-auto mt-3 max-w-lg text-center text-muted">
           One topic in, complete study material out.

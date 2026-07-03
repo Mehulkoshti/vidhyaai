@@ -40,7 +40,8 @@ export type StudyMode =
   | "explain"
   | "mindmap"
   | "test"
-  | "planner";
+  | "planner"
+  | "course";
 
 /** An uploaded image/PDF, base64-encoded (no data: prefix). */
 export interface InlineFile {
@@ -113,6 +114,11 @@ const schemas: Record<StudyMode, JsonSchema> = {
     totalDays: num,
     days: arr(obj({ day: num, focus: str, tasks: arr(str) })),
   }),
+  course: obj({
+    title: str,
+    overview: str,
+    chapters: arr(obj({ title: str, summary: str, topics: arr(str) })),
+  }),
 };
 
 const prompts: Record<StudyMode, (topic: string, lang: string) => string> = {
@@ -144,6 +150,11 @@ const prompts: Record<StudyMode, (topic: string, lang: string) => string> = {
     `If the user specifies a number of days or an exam date, honour it; otherwise plan for 7 days. ` +
     `For each day give the day number, a short focus theme, and 2-4 concrete tasks. Set totalDays accordingly. ` +
     `Respond in ${lang}.\n\nREQUEST:\n${t}`,
+  course: (t, lang) =>
+    `You are a curriculum designer. Build a structured course outline for the subject/syllabus below. ` +
+    `Give a course title, a 1-2 sentence overview, and 5-8 chapters in a logical learning order. ` +
+    `Each chapter has a title, a one-line summary, and 3-5 key topics it covers. ` +
+    `Respond in ${lang}.\n\nSUBJECT/SYLLABUS:\n${t}`,
 };
 
 /* ------------------------------------------------------------------ *
@@ -393,6 +404,16 @@ function mockStudy(mode: StudyMode, topic: string, lang: string): unknown {
           day: i + 1,
           focus: `Day ${i + 1} focus theme`,
           tasks: ["First concrete task", "Second concrete task"],
+        })),
+      };
+    case "course":
+      return {
+        title: `${topic} — Full Course${tag}`,
+        overview: `A mock structured course on ${topic}. Turn on real Sarvam AI to get a proper chapter-by-chapter syllabus in ${lang}.`,
+        chapters: Array.from({ length: 6 }, (_, i) => ({
+          title: `Chapter ${i + 1}: Key area ${i + 1}`,
+          summary: `What Chapter ${i + 1} of ${topic} covers, in one line.`,
+          topics: ["Topic A", "Topic B", "Topic C"],
         })),
       };
   }

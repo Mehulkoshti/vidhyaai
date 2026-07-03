@@ -12,6 +12,7 @@ const VALID_MODES: StudyMode[] = [
   "mindmap",
   "test",
   "planner",
+  "course",
 ];
 const ALLOWED_MIME = ["image/png", "image/jpeg", "application/pdf"];
 
