@@ -1,11 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   Share,
   StatusBar,
@@ -15,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AudioModule,
   createAudioPlayer,
@@ -35,15 +34,16 @@ import {
 } from "./storage";
 
 /**
- * VidhyaAI mobile (Expo). A native client for the same VidhyaAI backend that
- * powers the web app — every AI call runs on Sarvam AI server-side, so no API
- * key ever ships in the app. Point API_BASE at your deployed web app.
+ * VidhyaAI mobile (Expo) — native client for the same VidhyaAI backend that
+ * powers the web app. Every AI call runs on Sarvam AI server-side, so no key
+ * ships in the app. Point API_BASE at your deployed web app.
  */
 const API_BASE = "https://vidhya-ai-01.netlify.app";
 
 const C = {
   bg: "#07080d",
-  card: "rgba(255,255,255,0.03)",
+  nav: "#0b0d16",
+  card: "rgba(255,255,255,0.035)",
   border: "rgba(255,255,255,0.10)",
   fg: "#eef0f6",
   muted: "#9aa3b8",
@@ -71,9 +71,15 @@ const LANGS = [
   "Telugu", "Kannada", "Gujarati", "Malayalam", "Punjabi", "Odia",
 ];
 
-/* ---------- Sarvam TTS playback (native voice) ---------- */
-let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
+const TABS = [
+  { key: "study", label: "Study", icon: "✨" },
+  { key: "saved", label: "Saved", icon: "📚" },
+  { key: "progress", label: "Progress", icon: "📊" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
 
+/* ---------- Sarvam TTS playback ---------- */
+let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
 async function playTTS(text: string, lang: string, setBusy: (b: boolean) => void) {
   try {
     setBusy(true);
@@ -88,7 +94,7 @@ async function playTTS(text: string, lang: string, setBusy: (b: boolean) => void
     });
     const json = await res.json();
     if (!res.ok || json.mock || !json.audio) {
-      Alert.alert("Listen", "Voice needs the live Sarvam key — it works once the app is deployed with the key.");
+      Alert.alert("Listen", "Voice needs the live Sarvam key — it works once deployed with the key.");
       return;
     }
     const uri = FileSystem.cacheDirectory + `tts-${Date.now()}.mp3`;
@@ -103,7 +109,6 @@ async function playTTS(text: string, lang: string, setBusy: (b: boolean) => void
   }
 }
 
-/* ---------- Flatten a result to plain text (for Listen + Share) ---------- */
 function toText(mode: string, d: any): string {
   if (mode === "summary") return `${d.title}\n\n${(d.keyPoints || []).map((p: string, i: number) => `${i + 1}. ${p}`).join("\n")}\n\n${d.summary}`;
   if (mode === "explain") return `${d.title}\n\nELI5: ${d.eli5}\n\nIn depth: ${d.detailed}\n\nAnalogy: ${d.analogy}`;
@@ -115,80 +120,44 @@ function toText(mode: string, d: any): string {
 }
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Root />
+    </SafeAreaProvider>
+  );
+}
+
+function Root() {
+  const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<Tab>("study");
+
+  // study state
   const [mode, setMode] = useState("summary");
   const [lang, setLang] = useState("English");
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ mode: string; data: any } | null>(null);
-  const [savedOpen, setSavedOpen] = useState(false);
-  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
-  const [progressOpen, setProgressOpen] = useState(false);
-  const [progress, setProgress] = useState<Progress | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
+  // library + progress
+  const [library, setLibrary] = useState<SavedItem[]>([]);
+  const [progress, setProgress] = useState<Progress | null>(null);
+
   const isAsk = mode === "ask";
 
-  // Voice input via Sarvam Saaras STT: record → send audio to /api/stt → fill topic.
-  async function toggleMic() {
-    try {
-      if (recording) {
-        setRecording(false);
-        await recorder.stop();
-        const uri = recorder.uri;
-        if (!uri) return;
-        setTranscribing(true);
-        const fd = new FormData();
-        fd.append("file", { uri, name: "audio.m4a", type: "audio/m4a" } as any);
-        fd.append("lang", lang);
-        const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
-        const json = await res.json();
-        if (res.ok && json.transcript) {
-          setTopic((t) => (t ? `${t} ${json.transcript}` : json.transcript));
-        }
-      } else {
-        const perm = await AudioModule.requestRecordingPermissionsAsync();
-        if (!perm.granted) {
-          Alert.alert("Microphone", "Please allow microphone access to use voice input.");
-          return;
-        }
-        await setAudioModeAsync({ allowsRecording: true });
-        await recorder.prepareToRecordAsync();
-        recorder.record();
-        setRecording(true);
-      }
-    } catch {
-      Alert.alert("Voice input", "Couldn't capture audio on this device.");
-      setRecording(false);
-    } finally {
-      setTranscribing(false);
-    }
-  }
+  useEffect(() => { loadLibrary().then(setLibrary); }, []);
 
-  async function openSaved() {
-    setSavedItems(await loadLibrary());
-    setSavedOpen(true);
-  }
-  async function openProgress() {
-    setProgress(await getProgress());
-    setProgressOpen(true);
-  }
-  async function deleteSaved(id: string) {
-    setSavedItems(await removeItem(id));
-  }
-  function openItem(it: SavedItem) {
-    setResult({ mode: it.mode, data: it.data });
-    setLang(it.lang);
-    setSavedOpen(false);
+  function selectTab(t: Tab) {
+    if (t === "saved") loadLibrary().then(setLibrary);
+    if (t === "progress") getProgress().then(setProgress);
+    setTab(t);
   }
 
   async function generate() {
-    if (!topic.trim()) {
-      setError(isAsk ? "Type your question." : "Enter a topic to study.");
-      return;
-    }
+    if (!topic.trim()) { setError(isAsk ? "Type your question." : "Enter a topic to study."); return; }
     setError("");
     setLoading(true);
     setResult(null);
@@ -212,143 +181,185 @@ export default function App() {
     }
   }
 
+  async function toggleMic() {
+    try {
+      if (recording) {
+        setRecording(false);
+        await recorder.stop();
+        const uri = recorder.uri;
+        if (!uri) return;
+        setTranscribing(true);
+        const fd = new FormData();
+        fd.append("file", { uri, name: "audio.m4a", type: "audio/m4a" } as any);
+        fd.append("lang", lang);
+        const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
+        const json = await res.json();
+        if (res.ok && json.transcript) setTopic((t) => (t ? `${t} ${json.transcript}` : json.transcript));
+      } else {
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
+        if (!perm.granted) { Alert.alert("Microphone", "Please allow microphone access for voice input."); return; }
+        await setAudioModeAsync({ allowsRecording: true });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+        setRecording(true);
+      }
+    } catch {
+      Alert.alert("Voice input", "Couldn't capture audio on this device.");
+      setRecording(false);
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  async function onSave(item: SavedItem) {
+    setLibrary(await saveItem(item));
+  }
+  async function onDelete(id: string) {
+    setLibrary(await removeItem(id));
+  }
+  function openSaved(it: SavedItem) {
+    setResult({ mode: it.mode, data: it.data });
+    setLang(it.lang);
+    setTab("study");
+  }
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
+        <Text style={styles.brandSub}>{TABS.find((t) => t.key === tab)?.label} · Sarvam AI 🇮🇳</Text>
+      </View>
+
+      {/* Body */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
-            <Text style={styles.brandSub}>AI Study Companion · Sarvam AI 🇮🇳</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity style={styles.navBtn} onPress={openProgress}>
-              <Text style={styles.navBtnText}>📊</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.navBtn} onPress={openSaved}>
-              <Text style={styles.navBtnText}>📚</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 44 }} keyboardShouldPersistTaps="handled">
-          <Text style={styles.label}>Mode</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-            {MODES.map((m) => (
-              <Chip key={m.key} active={mode === m.key} label={`${m.icon} ${m.label}`} onPress={() => { setMode(m.key); setResult(null); }} />
-            ))}
-          </ScrollView>
-
-          <Text style={styles.label}>Language</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-            {LANGS.map((l) => (
-              <Chip key={l} active={lang === l} label={l} onPress={() => setLang(l)} small />
-            ))}
-          </ScrollView>
-
-          <View style={styles.labelRow}>
-            <Text style={[styles.label, { marginBottom: 0 }]}>{isAsk ? "Your question" : "Topic / notes"}</Text>
-            <TouchableOpacity
-              onPress={toggleMic}
-              disabled={transcribing}
-              style={[styles.micBtn, recording && styles.micActive]}
-            >
-              {transcribing ? (
-                <ActivityIndicator size="small" color={C.accent} />
-              ) : (
-                <Text style={[styles.micText, recording && { color: C.rose }]}>
-                  {recording ? "⏺ Stop" : "🎤 Speak"}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            style={styles.input}
-            placeholder={isAsk ? "Ask a doubt…" : "e.g. Photosynthesis, Newton's laws…"}
-            placeholderTextColor={C.muted}
-            value={topic}
-            onChangeText={setTopic}
-            multiline
+        {tab === "study" && (
+          <StudyScreen
+            mode={mode} setMode={setMode}
+            lang={lang} setLang={setLang}
+            topic={topic} setTopic={setTopic}
+            loading={loading} error={error} result={result}
+            recording={recording} transcribing={transcribing}
+            onGenerate={generate} onMic={toggleMic} onSave={onSave}
+            isAsk={isAsk}
+            bottomPad={insets.bottom + 78}
           />
-
-          {error ? <Text style={styles.error}>⚠️ {error}</Text> : null}
-
-          <TouchableOpacity style={styles.btn} onPress={generate} disabled={loading} activeOpacity={0.85}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{isAsk ? "💬 Ask" : "✨ Generate"}</Text>}
-          </TouchableOpacity>
-
-          {result && (
-            <View style={{ marginTop: 22 }}>
-              <Result mode={result.mode} data={result.data} lang={lang} />
-            </View>
-          )}
-        </ScrollView>
+        )}
+        {tab === "saved" && (
+          <SavedScreen items={library} onOpen={openSaved} onDelete={onDelete} bottomPad={insets.bottom + 78} />
+        )}
+        {tab === "progress" && (
+          <ProgressScreen progress={progress} bottomPad={insets.bottom + 78} />
+        )}
       </KeyboardAvoidingView>
 
-      <LibraryModal
-        visible={savedOpen}
-        items={savedItems}
-        onClose={() => setSavedOpen(false)}
-        onOpen={openItem}
-        onDelete={deleteSaved}
-      />
-      <ProgressModal visible={progressOpen} progress={progress} onClose={() => setProgressOpen(false)} />
-    </SafeAreaView>
-  );
-}
-
-/* ---------- Library modal ---------- */
-function LibraryModal({
-  visible,
-  items,
-  onClose,
-  onOpen,
-  onDelete,
-}: {
-  visible: boolean;
-  items: SavedItem[];
-  onClose: () => void;
-  onOpen: (it: SavedItem) => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalWrap}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>📚 Saved decks</Text>
-            <TouchableOpacity onPress={onClose}><Text style={styles.close}>✕</Text></TouchableOpacity>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            {items.length === 0 ? (
-              <Text style={[styles.muted, { textAlign: "center", marginTop: 30 }]}>
-                Nothing saved yet. Tap ☆ Save on any result to keep it here.
-              </Text>
-            ) : (
-              items.map((it) => (
-                <View key={it.id} style={styles.block}>
-                  <Text style={styles.blockLabel}>{it.title}</Text>
-                  <Text style={styles.muted}>{it.mode} · {it.lang}</Text>
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                    <TouchableOpacity style={[styles.action, { borderColor: C.primary }]} onPress={() => onOpen(it)}>
-                      <Text style={[styles.actionText, { color: C.fg }]}>Open</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.action} onPress={() => onDelete(it.id)}>
-                      <Text style={[styles.actionText, { color: C.rose }]}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
+      {/* Bottom navigation */}
+      <View style={[styles.nav, { paddingBottom: insets.bottom + 8 }]}>
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <TouchableOpacity key={t.key} style={styles.navItem} onPress={() => selectTab(t.key)} activeOpacity={0.7}>
+              <Text style={[styles.navIcon, { opacity: active ? 1 : 0.5 }]}>{t.icon}</Text>
+              <Text style={[styles.navLabel, active && { color: C.primary }]}>{t.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-    </Modal>
+    </View>
   );
 }
 
-/* ---------- Progress modal ---------- */
-function ProgressModal({ visible, progress, onClose }: { visible: boolean; progress: Progress | null; onClose: () => void }) {
+/* ---------- Study screen ---------- */
+function StudyScreen(p: any) {
+  const activeMode = MODES.find((m) => m.key === p.mode);
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: p.bottomPad }} keyboardShouldPersistTaps="handled">
+      <Text style={styles.label}>Mode</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+        {MODES.map((m) => (
+          <Chip key={m.key} active={p.mode === m.key} label={`${m.icon} ${m.label}`} onPress={() => { p.setMode(m.key); }} />
+        ))}
+      </ScrollView>
+
+      <Text style={styles.label}>Language</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+        {LANGS.map((l) => (
+          <Chip key={l} active={p.lang === l} label={l} onPress={() => p.setLang(l)} small />
+        ))}
+      </ScrollView>
+
+      <View style={styles.labelRow}>
+        <Text style={[styles.label, { marginBottom: 0 }]}>{p.isAsk ? "Your question" : "Topic / notes"}</Text>
+        <TouchableOpacity onPress={p.onMic} disabled={p.transcribing} style={[styles.micBtn, p.recording && styles.micActive]}>
+          {p.transcribing ? (
+            <ActivityIndicator size="small" color={C.accent} />
+          ) : (
+            <Text style={[styles.micText, p.recording && { color: C.rose }]}>{p.recording ? "⏺ Stop" : "🎤 Speak"}</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+      <TextInput
+        style={styles.input}
+        placeholder={p.isAsk ? "Ask a doubt…" : "e.g. Photosynthesis, Newton's laws…"}
+        placeholderTextColor={C.muted}
+        value={p.topic}
+        onChangeText={p.setTopic}
+        multiline
+      />
+
+      {p.error ? <Text style={styles.error}>⚠️ {p.error}</Text> : null}
+
+      <TouchableOpacity style={styles.btn} onPress={p.onGenerate} disabled={p.loading} activeOpacity={0.85}>
+        {p.loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{p.isAsk ? "💬 Ask" : `✨ Generate ${activeMode?.label}`}</Text>}
+      </TouchableOpacity>
+
+      {p.result && (
+        <View style={{ marginTop: 22 }}>
+          <Result mode={p.result.mode} data={p.result.data} lang={p.lang} onSave={p.onSave} />
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+/* ---------- Saved screen ---------- */
+function SavedScreen({ items, onOpen, onDelete, bottomPad }: { items: SavedItem[]; onOpen: (i: SavedItem) => void; onDelete: (id: string) => void; bottomPad: number }) {
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad }}>
+      {items.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={{ fontSize: 40 }}>📚</Text>
+          <Text style={[styles.muted, { textAlign: "center", marginTop: 10 }]}>
+            Nothing saved yet. Tap ☆ Save on any result to keep it here — it stays even after you close the app.
+          </Text>
+        </View>
+      ) : (
+        items.map((it) => {
+          const m = MODES.find((x) => x.key === it.mode);
+          return (
+            <View key={it.id} style={styles.savedCard}>
+              <Text style={styles.savedTitle} numberOfLines={2}>{it.title}</Text>
+              <Text style={styles.muted}>{m?.icon} {m?.label || it.mode} · {it.lang}</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                <TouchableOpacity style={[styles.action, { borderColor: C.primary, backgroundColor: "rgba(124,140,255,0.12)" }]} onPress={() => onOpen(it)}>
+                  <Text style={[styles.actionText, { color: C.fg }]}>Open</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.action} onPress={() => onDelete(it.id)}>
+                  <Text style={[styles.actionText, { color: C.rose }]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })
+      )}
+    </ScrollView>
+  );
+}
+
+/* ---------- Progress screen ---------- */
+function ProgressScreen({ progress, bottomPad }: { progress: Progress | null; bottomPad: number }) {
   const cards = progress
     ? [
         { label: "Day streak", value: `${progress.streak}🔥` },
@@ -358,37 +369,27 @@ function ProgressModal({ visible, progress, onClose }: { visible: boolean; progr
       ]
     : [];
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalWrap}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>📊 Your progress</Text>
-            <TouchableOpacity onPress={onClose}><Text style={styles.close}>✕</Text></TouchableOpacity>
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad }}>
+      <View style={styles.statGrid}>
+        {cards.map((c) => (
+          <View key={c.label} style={styles.statCard}>
+            <Text style={styles.statValue}>{c.value}</Text>
+            <Text style={styles.statLabel}>{c.label}</Text>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <View style={styles.statGrid}>
-              {cards.map((c) => (
-                <View key={c.label} style={styles.statCard}>
-                  <Text style={styles.statValue}>{c.value}</Text>
-                  <Text style={styles.statLabel}>{c.label}</Text>
-                </View>
-              ))}
-            </View>
-            <Text style={[styles.label, { marginTop: 18 }]}>Recent tests</Text>
-            {!progress || progress.recent.length === 0 ? (
-              <Text style={styles.muted}>Take a Mock Test to start tracking progress.</Text>
-            ) : (
-              progress.recent.map((a, i) => (
-                <View key={i} style={styles.attemptRow}>
-                  <Text style={[styles.body, { flex: 1 }]} numberOfLines={1}>{a.topic}</Text>
-                  <Text style={{ color: a.percent >= 60 ? C.accent : C.amber, fontWeight: "700" }}>{a.percent}%</Text>
-                </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
+        ))}
       </View>
-    </Modal>
+      <Text style={[styles.label, { marginTop: 20 }]}>Recent tests</Text>
+      {!progress || progress.recent.length === 0 ? (
+        <Text style={styles.muted}>Take a Mock Test to start tracking your progress.</Text>
+      ) : (
+        progress.recent.map((a, i) => (
+          <View key={i} style={styles.attemptRow}>
+            <Text style={[styles.body, { flex: 1 }]} numberOfLines={1}>{a.topic}</Text>
+            <Text style={{ color: a.percent >= 60 ? C.accent : C.amber, fontWeight: "700" }}>{a.percent}%</Text>
+          </View>
+        ))
+      )}
+    </ScrollView>
   );
 }
 
@@ -400,24 +401,15 @@ function Chip({ label, active, onPress, small }: { label: string; active: boolea
   );
 }
 
-function ActionBar({ mode, data, lang }: { mode: string; data: any; lang: string }) {
+function ActionBar({ mode, data, lang, onSave }: { mode: string; data: any; lang: string; onSave: (i: SavedItem) => void }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const text = toText(mode, data);
-
   async function save() {
     if (saved) return;
-    await saveItem({
-      id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
-      title: data.title || (mode === "answer" ? "Doubt answer" : "VidhyaAI"),
-      mode,
-      data,
-      lang,
-      savedAt: Date.now(),
-    });
+    await onSave({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, title: data.title || (mode === "answer" ? "Doubt answer" : "VidhyaAI"), mode, data, lang, savedAt: Date.now() });
     setSaved(true);
   }
-
   return (
     <View style={styles.actions}>
       <TouchableOpacity style={styles.action} onPress={() => playTTS(text, lang, setBusy)} disabled={busy}>
@@ -434,13 +426,12 @@ function ActionBar({ mode, data, lang }: { mode: string; data: any; lang: string
 }
 
 /* ---------- Result renderers ---------- */
-function Result({ mode, data, lang }: { mode: string; data: any; lang: string }) {
+function Result({ mode, data, lang, onSave }: { mode: string; data: any; lang: string; onSave: (i: SavedItem) => void }) {
   if (mode === "test") return <View style={styles.card}><TestView data={data} /></View>;
-
   return (
     <View style={styles.card}>
       {mode !== "answer" && <Text style={styles.title}>{data.title}</Text>}
-      <ActionBar mode={mode} data={data} lang={lang} />
+      <ActionBar mode={mode} data={data} lang={lang} onSave={onSave} />
       {mode === "summary" && <Summary data={data} />}
       {mode === "explain" && <Explain data={data} />}
       {mode === "quiz" && <Quiz data={data} />}
@@ -498,7 +489,6 @@ function TestView({ data }: { data: any }) {
   const answered = Object.keys(picked).length;
   const score = (data.questions || []).reduce((a: number, q: any, i: number) => a + (picked[i] === q.answerIndex ? 1 : 0), 0);
   const percent = total ? Math.round((score / total) * 100) : 0;
-
   return (
     <View>
       <Text style={styles.title}>{data.title}</Text>
@@ -542,12 +532,7 @@ function QuestionList({ questions, picked, setPicked, reveal }: { questions: any
                 else { col = C.muted; }
               }
               return (
-                <TouchableOpacity
-                  key={oi}
-                  disabled={chosen !== undefined}
-                  onPress={() => setPicked((p: any) => ({ ...p, [qi]: oi }))}
-                  style={[styles.opt, { backgroundColor: bg, borderColor: bd }]}
-                >
+                <TouchableOpacity key={oi} disabled={chosen !== undefined} onPress={() => setPicked((p: any) => ({ ...p, [qi]: oi }))} style={[styles.opt, { backgroundColor: bg, borderColor: bd }]}>
                   <Text style={{ color: col }}>{String.fromCharCode(65 + oi)}. {opt}</Text>
                 </TouchableOpacity>
               );
@@ -567,12 +552,7 @@ function Flashcards({ data }: { data: any }) {
       {data.cards?.map((c: any, i: number) => {
         const f = flipped[i];
         return (
-          <TouchableOpacity
-            key={i}
-            activeOpacity={0.85}
-            onPress={() => setFlipped((p) => ({ ...p, [i]: !p[i] }))}
-            style={[styles.flash, f && { backgroundColor: "rgba(124,140,255,0.12)", borderColor: C.primary }]}
-          >
+          <TouchableOpacity key={i} activeOpacity={0.85} onPress={() => setFlipped((p) => ({ ...p, [i]: !p[i] }))} style={[styles.flash, f && { backgroundColor: "rgba(124,140,255,0.12)", borderColor: C.primary }]}>
             <Text style={styles.flashSide}>{f ? "ANSWER" : "TAP TO FLIP"}</Text>
             <Text style={styles.body}>{f ? c.back : c.front}</Text>
           </TouchableOpacity>
@@ -622,9 +602,7 @@ function Course({ data }: { data: any }) {
           <Text style={styles.body}>{c.summary}</Text>
           {c.topics?.length > 0 && (
             <View style={styles.topicWrap}>
-              {c.topics.map((t: string) => (
-                <Text key={t} style={styles.topicChip}>{t}</Text>
-              ))}
+              {c.topics.map((t: string) => <Text key={t} style={styles.topicChip}>{t}</Text>)}
             </View>
           )}
         </View>
@@ -634,96 +612,54 @@ function Course({ data }: { data: any }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === "android" ? 12 : 4,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  navBtn: {
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  navBtnText: { fontSize: 16 },
-  brand: { fontSize: 24, fontWeight: "700", color: C.primary },
-  brandSub: { fontSize: 12, color: C.muted, marginTop: 2 },
+  header: { paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.nav },
+  brand: { fontSize: 22, fontWeight: "800", color: C.primary },
+  brandSub: { fontSize: 12, color: C.muted, marginTop: 1 },
+
+  nav: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.nav, paddingTop: 8 },
+  navItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2 },
+  navIcon: { fontSize: 20 },
+  navLabel: { fontSize: 11, color: C.muted, fontWeight: "600" },
+
   label: { color: C.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
   labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  micBtn: {
-    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
-    paddingHorizontal: 12, paddingVertical: 5,
-  },
+  micBtn: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
   micActive: { borderColor: C.rose, backgroundColor: "rgba(251,113,133,0.12)" },
   micText: { color: C.muted, fontSize: 12 },
-  chip: {
-    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
-    paddingHorizontal: 14, paddingVertical: 8, marginRight: 8,
-  },
+  chip: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8 },
   chipActive: { borderColor: C.primary, backgroundColor: "rgba(124,140,255,0.15)" },
   chipText: { color: C.muted, fontSize: 13 },
-  input: {
-    borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 14,
-    padding: 14, color: C.fg, minHeight: 54, fontSize: 15,
-  },
+  input: { borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 14, padding: 14, color: C.fg, minHeight: 54, fontSize: 15 },
   error: { color: C.rose, marginTop: 10, fontSize: 13 },
   btn: { marginTop: 16, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+
   card: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 18, padding: 16 },
   actions: { flexDirection: "row", gap: 8, marginBottom: 14 },
   action: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
   actionText: { color: C.muted, fontSize: 13 },
   title: { color: C.fg, fontSize: 20, fontWeight: "700", marginBottom: 12 },
   row: { flexDirection: "row", gap: 10, marginBottom: 10, alignItems: "flex-start" },
-  bullet: {
-    color: C.accent, backgroundColor: "rgba(56,224,176,0.15)", width: 22, height: 22, borderRadius: 11,
-    textAlign: "center", lineHeight: 22, fontSize: 12, overflow: "hidden",
-  },
+  bullet: { color: C.accent, backgroundColor: "rgba(56,224,176,0.15)", width: 22, height: 22, borderRadius: 11, textAlign: "center", lineHeight: 22, fontSize: 12, overflow: "hidden" },
   body: { color: "rgba(238,240,246,0.9)", fontSize: 15, flex: 1, lineHeight: 22 },
   overviewLabel: { color: C.primary2, fontSize: 11, fontWeight: "700", letterSpacing: 1, marginTop: 12, marginBottom: 4 },
   muted: { color: C.muted, fontSize: 14, lineHeight: 21 },
-  block: {
-    borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12,
-    padding: 12, marginBottom: 10,
-  },
+  block: { borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 12, padding: 12, marginBottom: 10 },
   blockLabel: { color: C.fg, fontWeight: "600", marginBottom: 6 },
   qText: { color: C.fg, fontWeight: "600", marginBottom: 8 },
   opt: { borderWidth: 1, borderRadius: 10, padding: 11, marginBottom: 7 },
   why: { color: C.muted, fontSize: 13, marginTop: 4 },
-  flash: {
-    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 14, padding: 16,
-    marginBottom: 10, minHeight: 90, justifyContent: "center",
-  },
+  flash: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 10, minHeight: 90, justifyContent: "center" },
   flashSide: { color: C.muted, fontSize: 10, letterSpacing: 1, marginBottom: 6 },
   topicWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-  topicChip: {
-    borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999,
-    paddingHorizontal: 10, paddingVertical: 3, color: C.muted, fontSize: 12,
-  },
-  modalWrap: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  sheet: { maxHeight: "82%", backgroundColor: "#0d0f17", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: C.border },
-  sheetHead: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border,
-  },
-  sheetTitle: { color: C.fg, fontSize: 18, fontWeight: "700" },
-  close: { color: C.muted, fontSize: 18, paddingHorizontal: 6 },
+  topicChip: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, color: C.muted, fontSize: 12 },
+
+  empty: { alignItems: "center", marginTop: 60, paddingHorizontal: 20 },
+  savedCard: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 14, padding: 14, marginBottom: 10 },
+  savedTitle: { color: C.fg, fontWeight: "600", fontSize: 15, marginBottom: 3 },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  statCard: {
-    width: "47%", borderWidth: 1, borderColor: C.border, backgroundColor: C.card,
-    borderRadius: 14, paddingVertical: 16, alignItems: "center",
-  },
-  statValue: { color: C.primary, fontSize: 24, fontWeight: "800" },
+  statCard: { width: "47%", borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 14, paddingVertical: 18, alignItems: "center" },
+  statValue: { color: C.primary, fontSize: 26, fontWeight: "800" },
   statLabel: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginTop: 4 },
-  attemptRow: {
-    flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.border,
-    backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8,
-  },
+  attemptRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8 },
 });
