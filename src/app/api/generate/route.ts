@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generate, ask, StudyMode, InlineFile } from "@/lib/gemini";
+import { generate, ask, StudyMode, InlineFile } from "@/lib/sarvam";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,17 +13,12 @@ const VALID_MODES: StudyMode[] = [
   "test",
   "planner",
 ];
-const ALLOWED_MIME = ["image/png", "image/jpeg", "image/webp", "image/heic", "application/pdf"];
+const ALLOWED_MIME = ["image/png", "image/jpeg", "application/pdf"];
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "your_key_here") {
-      return NextResponse.json(
-        { error: "Gemini API key is not configured. Add GEMINI_API_KEY to .env.local" },
-        { status: 500 }
-      );
-    }
-
+    // No key check here: when SARVAM_API_KEY is unset the lib runs in MOCK mode
+    // (zero credits) so the app still works for development and previews.
     const body = await req.json();
     const lang = (body.lang as string) || "English";
 
@@ -53,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (file) {
       if (!ALLOWED_MIME.includes(file.mimeType)) {
         return NextResponse.json(
-          { error: "Unsupported file. Use an image (PNG/JPG/WEBP) or PDF." },
+          { error: "Unsupported file. Use a PNG/JPG image or a PDF." },
           { status: 400 }
         );
       }
@@ -77,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Something went wrong";
-    console.error("[VidyaAI] generate error:", message);
+    console.error("[VidhyaAI] generate error:", message);
     return NextResponse.json({ error: "AI generation failed. Please try again." }, { status: 500 });
   }
 }

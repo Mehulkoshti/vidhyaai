@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { StudyMode } from "@/lib/gemini";
+import type { StudyMode } from "@/lib/sarvam";
 import { SpeakButton, CopyButton, DownloadButton } from "@/components/SpeakButton";
 import { ExamMode, type TestData } from "@/components/ExamMode";
 
@@ -81,7 +81,7 @@ function toText(mode: StudyMode, data: unknown): string {
   return `${d.title}\n\nExplain like I'm 5:\n${d.eli5}\n\nIn depth:\n${d.detailed}\n\nAnalogy:\n${d.analogy}`;
 }
 
-export function Results({ mode, data }: { mode: StudyMode; data: unknown }) {
+export function Results({ mode, data, lang = "English" }: { mode: StudyMode; data: unknown; lang?: string }) {
   // Test mode is fully interactive — no copy/listen action bar.
   if (mode === "test") return <ExamMode data={data as TestData} />;
 
@@ -92,7 +92,7 @@ export function Results({ mode, data }: { mode: StudyMode; data: unknown }) {
     <div>
       {/* Action bar */}
       <div className="mb-5 flex flex-wrap justify-end gap-2">
-        <SpeakButton text={plain} />
+        <SpeakButton text={plain} lang={lang} />
         <CopyButton text={plain} />
         <DownloadButton text={plain} filename={fname} />
       </div>

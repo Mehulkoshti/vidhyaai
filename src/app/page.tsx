@@ -14,8 +14,8 @@ const MODES = [
 const POWERS = [
   { icon: "📸", title: "Photo / PDF → Notes", desc: "Snap your handwritten notes or upload a PDF. AI reads it natively and builds study material." },
   { icon: "💬", title: "Ask Any Doubt", desc: "Chat with an AI tutor that remembers your whole session — nothing disappears." },
-  { icon: "🔊", title: "Listen Aloud", desc: "Text-to-speech for revision on the go. Learn with your ears, not just your eyes." },
-  { icon: "🌐", title: "Your Language", desc: "English, Hindi, Hinglish, Marathi, Tamil, Bengali — study how you think." },
+  { icon: "🔊", title: "Listen Aloud", desc: "Natural, native-sounding voices via Sarvam's Bulbul — revise with your ears, in your language." },
+  { icon: "🌐", title: "Your Language", desc: "Powered by Sarvam AI, India's own LLM. English, Hindi, Hinglish, Marathi, Tamil, Bengali — study how you think." },
 ];
 
 const STEPS = [
@@ -25,7 +25,7 @@ const STEPS = [
 ];
 
 const STATS = [
-  { value: "4", label: "Study modes" },
+  { value: "8", label: "Study modes" },
   { value: "6", label: "Languages" },
   { value: "₹0", label: "Cost, forever" },
   { value: "∞", label: "Topics" },
@@ -88,7 +88,7 @@ export default function Landing() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-70" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
           </span>
-          AI Study Companion · Powered by Google Gemini
+          AI Study Companion · Powered by Sarvam AI 🇮🇳
         </div>
 
         <h1 className="font-serif text-5xl font-semibold leading-[1.05] tracking-tight sm:text-7xl animate-fade-up" style={{ animationDelay: "0.05s" }}>
@@ -311,7 +311,7 @@ export default function Landing() {
       </section>
 
       <footer className="mx-auto w-full max-w-5xl border-t border-border px-5 py-8 text-center text-xs text-muted/50">
-        VidhyaAI · Built with Next.js · Tailwind · Google Gemini · for HACKHAZARDS &apos;26
+        VidhyaAI · Built with Next.js · Tailwind · Sarvam AI · for HACKHAZARDS &apos;26
       </footer>
     </div>
   );

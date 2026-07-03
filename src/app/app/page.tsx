@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Results } from "@/components/Results";
 import { SpeakButton } from "@/components/SpeakButton";
-import type { StudyMode } from "@/lib/gemini";
+import type { StudyMode } from "@/lib/sarvam";
 
 type InputMode = "ask" | StudyMode;
 
@@ -23,8 +23,8 @@ const LANGS = ["English", "Hindi", "Hinglish", "Marathi", "Tamil", "Bengali"];
 
 type Message =
   | { id: string; role: "user"; text: string; mode: InputMode; fileName?: string }
-  | { id: string; role: "assistant"; kind: "study"; mode: StudyMode; data: unknown }
-  | { id: string; role: "assistant"; kind: "answer"; text: string }
+  | { id: string; role: "assistant"; kind: "study"; mode: StudyMode; data: unknown; lang: string }
+  | { id: string; role: "assistant"; kind: "answer"; text: string; lang: string }
   | { id: string; role: "assistant"; kind: "error"; text: string };
 
 interface AttachedFile {
@@ -168,8 +168,8 @@ export default function ChatApp() {
 
       const aMsg: Message =
         mode === "ask"
-          ? { id: newId(), role: "assistant", kind: "answer", text: json.data.answer }
-          : { id: newId(), role: "assistant", kind: "study", mode, data: json.data };
+          ? { id: newId(), role: "assistant", kind: "answer", text: json.data.answer, lang }
+          : { id: newId(), role: "assistant", kind: "study", mode, data: json.data, lang };
       setMessages((m) => [...m, aMsg]);
     } catch (e: unknown) {
       setMessages((m) => [
@@ -281,7 +281,7 @@ export default function ChatApp() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,application/pdf"
+              accept="image/png,image/jpeg,application/pdf"
               className="hidden"
               onChange={(e) => handleFile(e.target.files?.[0])}
             />
@@ -371,7 +371,7 @@ function MessageBubble({ message }: { message: Message }) {
         <div className="glass max-w-[92%] rounded-2xl rounded-bl-sm p-4">
           <p className="leading-relaxed text-foreground/90 whitespace-pre-wrap">{message.text}</p>
           <div className="mt-3">
-            <SpeakButton text={message.text} />
+            <SpeakButton text={message.text} lang={message.lang} />
           </div>
         </div>
       </div>
@@ -381,7 +381,7 @@ function MessageBubble({ message }: { message: Message }) {
   // study card
   return (
     <div className="glass rounded-2xl p-5 sm:p-6 animate-fade-up">
-      <Results mode={message.mode} data={message.data} />
+      <Results mode={message.mode} data={message.data} lang={message.lang} />
     </div>
   );
 }
