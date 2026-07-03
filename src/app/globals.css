@@ -141,6 +141,73 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
+/* Animated gradient-border card */
+.gborder {
+  position: relative;
+  isolation: isolate;
+}
+.gborder::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.55), rgba(124, 140, 255, 0.15) 45%, rgba(56, 224, 176, 0.55));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Soft radial spotlight behind a section */
+.spotlight {
+  position: relative;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -10%;
+  width: 70%;
+  height: 340px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(124, 140, 255, 0.14), transparent 70%);
+  filter: blur(20px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Eyebrow pill */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@keyframes shine {
+  to { background-position: 200% center; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, #eef0f6 0%, #a78bfa 25%, #38e0b0 50%, #a78bfa 75%, #eef0f6 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text { animation: none; }
+}
+
 /* Glow button */
 .btn-glow {
   background: linear-gradient(120deg, #7c8cff, #a78bfa);

@@ -20,7 +20,7 @@ const literata = Literata({
 export const metadata: Metadata = {
   title: "VidhyaAI — Your AI Study Companion",
   description:
-    "Turn any topic, notes, or a photo/PDF into instant summaries, quizzes, flashcards, and simple explanations — in your language. Learn faster with AI.",
+    "Turn any topic, notes, or a photo/PDF into instant summaries, quizzes, flashcards, mock tests and simple explanations — with voice, in 12 Indian languages. Powered by Sarvam AI. Classroom, study rooms, and a mobile app included.",
 };
 
 export default function RootLayout({
