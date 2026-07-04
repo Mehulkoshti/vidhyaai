@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   Share,
@@ -34,9 +35,9 @@ import {
 } from "./storage";
 
 /**
- * VidhyaAI mobile (Expo) — native client for the same VidhyaAI backend that
- * powers the web app. Every AI call runs on Sarvam AI server-side, so no key
- * ships in the app. Point API_BASE at your deployed web app.
+ * VidhyaAI mobile (Expo) — a ChatGPT-style native client for the same VidhyaAI
+ * backend that powers the web app. Every AI call runs on Sarvam AI server-side,
+ * so no key ships in the app.
  */
 const API_BASE = "https://vidhya-ai-01.netlify.app";
 
@@ -55,6 +56,7 @@ const C = {
 };
 
 const MODES = [
+  { key: "ask", label: "Ask", icon: "💬" },
   { key: "summary", label: "Summary", icon: "📝" },
   { key: "explain", label: "Explain", icon: "💡" },
   { key: "quiz", label: "Quiz", icon: "🎯" },
@@ -63,7 +65,6 @@ const MODES = [
   { key: "mindmap", label: "Mind Map", icon: "🗺️" },
   { key: "planner", label: "Planner", icon: "📅" },
   { key: "course", label: "Course", icon: "📖" },
-  { key: "ask", label: "Ask", icon: "💬" },
 ];
 
 const LANGS = [
@@ -71,12 +72,23 @@ const LANGS = [
   "Telugu", "Kannada", "Gujarati", "Malayalam", "Punjabi", "Odia",
 ];
 
+const EXAMPLES = ["Photosynthesis", "Newton's laws", "French Revolution", "OOP concepts"];
+
 const TABS = [
   { key: "study", label: "Study", icon: "✨" },
   { key: "saved", label: "Saved", icon: "📚" },
   { key: "progress", label: "Progress", icon: "📊" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+
+type Msg =
+  | { id: string; role: "user"; mode: string; topic: string }
+  | { id: string; role: "assistant"; mode: string; data: any }
+  | { id: string; role: "assistant"; error: true; text: string };
+
+function newId() {
+  return `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+}
 
 /* ---------- Sarvam TTS playback ---------- */
 let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
@@ -131,15 +143,15 @@ function Root() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("study");
 
-  // study state
-  const [mode, setMode] = useState("summary");
+  // chat state
+  const [mode, setMode] = useState("ask");
   const [lang, setLang] = useState("English");
   const [topic, setTopic] = useState("");
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<{ mode: string; data: any } | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   // library + progress
@@ -156,15 +168,17 @@ function Root() {
     setTab(t);
   }
 
-  async function generate() {
-    if (!topic.trim()) { setError(isAsk ? "Type your question." : "Enter a topic to study."); return; }
-    setError("");
+  async function send() {
+    const t = topic.trim();
+    if (!t || loading) return;
+    const userMsg: Msg = { id: newId(), role: "user", mode, topic: t };
+    setMessages((m) => [...m, userMsg]);
+    setTopic("");
     setLoading(true);
-    setResult(null);
     try {
       const body = isAsk
-        ? { mode: "ask", question: topic.trim(), context: "general studies", lang }
-        : { mode, topic: topic.trim(), lang };
+        ? { mode: "ask", question: t, context: "general studies", lang }
+        : { mode, topic: t, lang };
       const res = await fetch(`${API_BASE}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,10 +186,10 @@ function Root() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Something went wrong");
-      setResult({ mode: isAsk ? "answer" : mode, data: json.data });
+      setMessages((m) => [...m, { id: newId(), role: "assistant", mode: isAsk ? "answer" : mode, data: json.data }]);
       recordStudyDay();
     } catch (e: any) {
-      setError(e?.message || "Could not reach VidhyaAI. Check your connection.");
+      setMessages((m) => [...m, { id: newId(), role: "assistant", error: true, text: e?.message || "Could not reach VidhyaAI." }]);
     } finally {
       setLoading(false);
     }
@@ -211,51 +225,60 @@ function Root() {
     }
   }
 
-  async function onSave(item: SavedItem) {
-    setLibrary(await saveItem(item));
-  }
-  async function onDelete(id: string) {
-    setLibrary(await removeItem(id));
-  }
+  async function onSave(item: SavedItem) { setLibrary(await saveItem(item)); }
+  async function onDelete(id: string) { setLibrary(await removeItem(id)); }
   function openSaved(it: SavedItem) {
-    setResult({ mode: it.mode, data: it.data });
+    setMessages((m) => [...m, { id: newId(), role: "assistant", mode: it.mode, data: it.data }]);
     setLang(it.lang);
     setTab("study");
   }
 
+  const activeMode = MODES.find((m) => m.key === mode)!;
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={C.nav} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
-        <Text style={styles.brandSub}>{TABS.find((t) => t.key === tab)?.label} · Sarvam AI 🇮🇳</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.brand}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
+          <Text style={styles.brandSub}>{TABS.find((t) => t.key === tab)?.label} · Sarvam AI 🇮🇳</Text>
+        </View>
+        {tab === "study" && messages.length > 0 && (
+          <TouchableOpacity style={styles.newBtn} onPress={() => setMessages([])}>
+            <Text style={styles.newBtnText}>＋ New</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Body */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={0}>
         {tab === "study" && (
-          <StudyScreen
-            mode={mode} setMode={setMode}
-            lang={lang} setLang={setLang}
-            topic={topic} setTopic={setTopic}
-            loading={loading} error={error} result={result}
-            recording={recording} transcribing={transcribing}
-            onGenerate={generate} onMic={toggleMic} onSave={onSave}
-            isAsk={isAsk}
-            bottomPad={insets.bottom + 78}
+          <ChatScreen
+            messages={messages}
+            loading={loading}
+            lang={lang}
+            onSave={onSave}
+            onExample={(ex: string) => setTopic(ex)}
+            mode={mode}
+            setMode={setMode}
+            topic={topic}
+            setTopic={setTopic}
+            onSend={send}
+            onMic={toggleMic}
+            recording={recording}
+            transcribing={transcribing}
+            onOpenLang={() => setLangOpen(true)}
+            activeMode={activeMode}
+            bottomInset={insets.bottom}
           />
         )}
-        {tab === "saved" && (
-          <SavedScreen items={library} onOpen={openSaved} onDelete={onDelete} bottomPad={insets.bottom + 78} />
-        )}
-        {tab === "progress" && (
-          <ProgressScreen progress={progress} bottomPad={insets.bottom + 78} />
-        )}
+        {tab === "saved" && <SavedScreen items={library} onOpen={openSaved} onDelete={onDelete} bottomPad={insets.bottom + 80} />}
+        {tab === "progress" && <ProgressScreen progress={progress} bottomPad={insets.bottom + 80} />}
       </KeyboardAvoidingView>
 
-      {/* Bottom navigation */}
+      {/* Bottom nav */}
       <View style={[styles.nav, { paddingBottom: insets.bottom + 8 }]}>
         {TABS.map((t) => {
           const active = tab === t.key;
@@ -267,60 +290,122 @@ function Root() {
           );
         })}
       </View>
+
+      {/* Language picker */}
+      <Modal visible={langOpen} transparent animationType="slide" onRequestClose={() => setLangOpen(false)}>
+        <View style={styles.modalWrap}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>🌐 Language</Text>
+              <TouchableOpacity onPress={() => setLangOpen(false)}><Text style={styles.close}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 12 }}>
+              {LANGS.map((l) => (
+                <TouchableOpacity key={l} style={[styles.langRow, lang === l && styles.langRowActive]} onPress={() => { setLang(l); setLangOpen(false); }}>
+                  <Text style={{ color: lang === l ? C.accent : C.fg, fontSize: 16 }}>{l}</Text>
+                  {lang === l && <Text style={{ color: C.accent }}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-/* ---------- Study screen ---------- */
-function StudyScreen(p: any) {
-  const activeMode = MODES.find((m) => m.key === p.mode);
+/* ---------- Chat screen ---------- */
+function ChatScreen(p: any) {
+  const scrollRef = useRef<ScrollView>(null);
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: p.bottomPad }} keyboardShouldPersistTaps="handled">
-      <Text style={styles.label}>Mode</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-        {MODES.map((m) => (
-          <Chip key={m.key} active={p.mode === m.key} label={`${m.icon} ${m.label}`} onPress={() => { p.setMode(m.key); }} />
-        ))}
-      </ScrollView>
-
-      <Text style={styles.label}>Language</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-        {LANGS.map((l) => (
-          <Chip key={l} active={p.lang === l} label={l} onPress={() => p.setLang(l)} small />
-        ))}
-      </ScrollView>
-
-      <View style={styles.labelRow}>
-        <Text style={[styles.label, { marginBottom: 0 }]}>{p.isAsk ? "Your question" : "Topic / notes"}</Text>
-        <TouchableOpacity onPress={p.onMic} disabled={p.transcribing} style={[styles.micBtn, p.recording && styles.micActive]}>
-          {p.transcribing ? (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 14, paddingBottom: 20 }}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {p.messages.length === 0 ? (
+          <View style={styles.welcome}>
+            <Text style={{ fontSize: 44 }}>📚</Text>
+            <Text style={styles.welcomeTitle}>What are we studying today?</Text>
+            <Text style={[styles.muted, { textAlign: "center", marginTop: 6 }]}>
+              Pick a mode below, type a topic (or use 🎤), and hit send. Ask follow-up doubts anytime.
+            </Text>
+            <View style={styles.exampleWrap}>
+              {EXAMPLES.map((ex) => (
+                <TouchableOpacity key={ex} style={styles.exampleChip} onPress={() => p.onExample(ex)}>
+                  <Text style={{ color: C.muted, fontSize: 13 }}>{ex}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          p.messages.map((m: Msg) => <MessageBubble key={m.id} m={m} lang={p.lang} onSave={p.onSave} />)
+        )}
+        {p.loading && (
+          <View style={styles.thinking}>
             <ActivityIndicator size="small" color={C.accent} />
-          ) : (
-            <Text style={[styles.micText, p.recording && { color: C.rose }]}>{p.recording ? "⏺ Stop" : "🎤 Speak"}</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-      <TextInput
-        style={styles.input}
-        placeholder={p.isAsk ? "Ask a doubt…" : "e.g. Photosynthesis, Newton's laws…"}
-        placeholderTextColor={C.muted}
-        value={p.topic}
-        onChangeText={p.setTopic}
-        multiline
-      />
+            <Text style={styles.muted}>Thinking…</Text>
+          </View>
+        )}
+      </ScrollView>
 
-      {p.error ? <Text style={styles.error}>⚠️ {p.error}</Text> : null}
-
-      <TouchableOpacity style={styles.btn} onPress={p.onGenerate} disabled={p.loading} activeOpacity={0.85}>
-        {p.loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{p.isAsk ? "💬 Ask" : `✨ Generate ${activeMode?.label}`}</Text>}
-      </TouchableOpacity>
-
-      {p.result && (
-        <View style={{ marginTop: 22 }}>
-          <Result mode={p.result.mode} data={p.result.data} lang={p.lang} onSave={p.onSave} />
+      {/* Composer */}
+      <View style={[styles.composer, { paddingBottom: 10 }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} keyboardShouldPersistTaps="handled">
+          {MODES.map((m) => (
+            <Chip key={m.key} active={p.mode === m.key} label={`${m.icon} ${m.label}`} onPress={() => p.setMode(m.key)} />
+          ))}
+        </ScrollView>
+        <View style={styles.inputRow}>
+          <TouchableOpacity onPress={p.onMic} disabled={p.transcribing} style={styles.iconBtn}>
+            {p.transcribing ? <ActivityIndicator size="small" color={C.accent} /> : <Text style={{ fontSize: 18, color: p.recording ? C.rose : C.muted }}>{p.recording ? "⏺" : "🎤"}</Text>}
+          </TouchableOpacity>
+          <TextInput
+            style={styles.input}
+            placeholder={p.mode === "ask" ? "Ask a doubt…" : `Topic for ${p.activeMode.label.toLowerCase()}…`}
+            placeholderTextColor={C.muted}
+            value={p.topic}
+            onChangeText={p.setTopic}
+            multiline
+          />
+          <TouchableOpacity style={styles.langPill} onPress={p.onOpenLang}>
+            <Text style={{ color: C.muted, fontSize: 11 }}>{p.lang.slice(0, 3)} ▾</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sendBtn} onPress={p.onSend} disabled={p.loading}>
+            <Text style={{ color: "#fff", fontWeight: "700" }}>↑</Text>
+          </TouchableOpacity>
         </View>
-      )}
-    </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+function MessageBubble({ m, lang, onSave }: { m: Msg; lang: string; onSave: (i: SavedItem) => void }) {
+  if (m.role === "user") {
+    const mode = MODES.find((x) => x.key === m.mode);
+    return (
+      <View style={styles.userWrap}>
+        <View style={styles.userBubble}>
+          <Text style={styles.userMeta}>{mode?.icon}{m.mode !== "ask" ? ` ${mode?.label}` : ""}</Text>
+          <Text style={styles.userText}>{m.topic}</Text>
+        </View>
+      </View>
+    );
+  }
+  if ("error" in m) {
+    return (
+      <View style={styles.errBubble}>
+        <Text style={styles.errText}>⚠️ {m.text}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Result mode={m.mode} data={m.data} lang={lang} onSave={onSave} />
+    </View>
   );
 }
 
@@ -393,9 +478,9 @@ function ProgressScreen({ progress, bottomPad }: { progress: Progress | null; bo
   );
 }
 
-function Chip({ label, active, onPress, small }: { label: string; active: boolean; onPress: () => void; small?: boolean }) {
+function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.chip, active && styles.chipActive, small && { paddingVertical: 6 }]}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.chip, active && styles.chipActive]}>
       <Text style={[styles.chipText, active && { color: C.fg }]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -407,7 +492,7 @@ function ActionBar({ mode, data, lang, onSave }: { mode: string; data: any; lang
   const text = toText(mode, data);
   async function save() {
     if (saved) return;
-    await onSave({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, title: data.title || (mode === "answer" ? "Doubt answer" : "VidhyaAI"), mode, data, lang, savedAt: Date.now() });
+    await onSave({ id: newId(), title: data.title || (mode === "answer" ? "Doubt answer" : "VidhyaAI"), mode, data, lang, savedAt: Date.now() });
     setSaved(true);
   }
   return (
@@ -612,33 +697,57 @@ function Course({ data }: { data: any }) {
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.nav },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.nav },
   brand: { fontSize: 22, fontWeight: "800", color: C.primary },
   brandSub: { fontSize: 12, color: C.muted, marginTop: 1 },
+  newBtn: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  newBtnText: { color: C.muted, fontSize: 13, fontWeight: "600" },
 
   nav: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.nav, paddingTop: 8 },
   navItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2 },
   navIcon: { fontSize: 20 },
   navLabel: { fontSize: 11, color: C.muted, fontWeight: "600" },
 
+  welcome: { alignItems: "center", marginTop: 50, paddingHorizontal: 24 },
+  welcomeTitle: { color: C.fg, fontSize: 22, fontWeight: "700", marginTop: 14, textAlign: "center" },
+  exampleWrap: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 18 },
+  exampleChip: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+
+  userWrap: { alignItems: "flex-end", marginBottom: 14 },
+  userBubble: { maxWidth: "85%", backgroundColor: "rgba(124,140,255,0.18)", borderRadius: 16, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 9 },
+  userMeta: { color: C.muted, fontSize: 11, marginBottom: 2 },
+  userText: { color: C.fg, fontSize: 15 },
+  errBubble: { borderWidth: 1, borderColor: "rgba(251,113,133,0.4)", backgroundColor: "rgba(251,113,133,0.1)", borderRadius: 14, padding: 12, marginBottom: 14 },
+  errText: { color: C.rose, fontSize: 14 },
+  thinking: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+
+  composer: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.nav, paddingHorizontal: 12, paddingTop: 10 },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: 6, borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 18, padding: 6 },
+  iconBtn: { paddingHorizontal: 8, paddingVertical: 8 },
+  input: { flex: 1, color: C.fg, fontSize: 15, maxHeight: 110, paddingVertical: 8, paddingHorizontal: 4 },
+  langPill: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 8, alignSelf: "center" },
+  sendBtn: { backgroundColor: C.primary, borderRadius: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+
+  modalWrap: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  sheet: { maxHeight: "70%", backgroundColor: "#0d0f17", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: C.border },
+  sheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border },
+  sheetTitle: { color: C.fg, fontSize: 18, fontWeight: "700" },
+  close: { color: C.muted, fontSize: 18, paddingHorizontal: 6 },
+  langRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 13, paddingHorizontal: 14, borderRadius: 12 },
+  langRowActive: { backgroundColor: "rgba(56,224,176,0.1)" },
+
   label: { color: C.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
-  labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  micBtn: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  micActive: { borderColor: C.rose, backgroundColor: "rgba(251,113,133,0.12)" },
-  micText: { color: C.muted, fontSize: 12 },
-  chip: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8 },
+  chip: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7, marginRight: 7 },
   chipActive: { borderColor: C.primary, backgroundColor: "rgba(124,140,255,0.15)" },
   chipText: { color: C.muted, fontSize: 13 },
-  input: { borderWidth: 1, borderColor: C.border, backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 14, padding: 14, color: C.fg, minHeight: 54, fontSize: 15 },
-  error: { color: C.rose, marginTop: 10, fontSize: 13 },
-  btn: { marginTop: 16, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
+  btn: { marginTop: 12, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 
   card: { borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 18, padding: 16 },
-  actions: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  actions: { flexDirection: "row", gap: 8, marginBottom: 14, flexWrap: "wrap" },
   action: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
   actionText: { color: C.muted, fontSize: 13 },
-  title: { color: C.fg, fontSize: 20, fontWeight: "700", marginBottom: 12 },
+  title: { color: C.fg, fontSize: 19, fontWeight: "700", marginBottom: 12 },
   row: { flexDirection: "row", gap: 10, marginBottom: 10, alignItems: "flex-start" },
   bullet: { color: C.accent, backgroundColor: "rgba(56,224,176,0.15)", width: 22, height: 22, borderRadius: 11, textAlign: "center", lineHeight: 22, fontSize: 12, overflow: "hidden" },
   body: { color: "rgba(238,240,246,0.9)", fontSize: 15, flex: 1, lineHeight: 22 },
