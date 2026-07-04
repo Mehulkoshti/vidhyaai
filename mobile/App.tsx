@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,11 +27,13 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import {
   getProgress,
+  isOnboarded,
   loadLibrary,
   recordStudyDay,
   recordTest,
   removeItem,
   saveItem,
+  setOnboarded,
   type Progress,
   type SavedItem,
 } from "./storage";
@@ -78,6 +82,7 @@ const TABS = [
   { key: "study", label: "Study", icon: "✨" },
   { key: "saved", label: "Saved", icon: "📚" },
   { key: "progress", label: "Progress", icon: "📊" },
+  { key: "about", label: "About", icon: "ℹ️" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -158,9 +163,21 @@ function Root() {
   const [library, setLibrary] = useState<SavedItem[]>([]);
   const [progress, setProgress] = useState<Progress | null>(null);
 
+  // keyboard height (to lift the composer above the keyboard) + onboarding
+  const [kb, setKb] = useState(0);
+  const [onboarded, setOnb] = useState<boolean | null>(null);
+
   const isAsk = mode === "ask";
 
   useEffect(() => { loadLibrary().then(setLibrary); }, []);
+  useEffect(() => { isOnboarded().then(setOnb); }, []);
+  useEffect(() => {
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const s = Keyboard.addListener(showEvt, (e) => setKb(e.endCoordinates.height));
+    const h = Keyboard.addListener(hideEvt, () => setKb(0));
+    return () => { s.remove(); h.remove(); };
+  }, []);
 
   function selectTab(t: Tab) {
     if (t === "saved") loadLibrary().then(setLibrary);
@@ -235,6 +252,11 @@ function Root() {
 
   const activeMode = MODES.find((m) => m.key === mode)!;
 
+  if (onboarded === null) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
+  if (onboarded === false) {
+    return <Onboarding onDone={() => { setOnboarded(); setOnb(true); }} />;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar barStyle="light-content" backgroundColor={C.nav} />
@@ -252,8 +274,8 @@ function Root() {
         )}
       </View>
 
-      {/* Body */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={0}>
+      {/* Body — marginBottom lifts everything above the keyboard */}
+      <View style={{ flex: 1, marginBottom: kb }}>
         {tab === "study" && (
           <ChatScreen
             messages={messages}
@@ -271,25 +293,29 @@ function Root() {
             transcribing={transcribing}
             onOpenLang={() => setLangOpen(true)}
             activeMode={activeMode}
+            keyboardUp={kb > 0}
             bottomInset={insets.bottom}
           />
         )}
         {tab === "saved" && <SavedScreen items={library} onOpen={openSaved} onDelete={onDelete} bottomPad={insets.bottom + 80} />}
         {tab === "progress" && <ProgressScreen progress={progress} bottomPad={insets.bottom + 80} />}
-      </KeyboardAvoidingView>
-
-      {/* Bottom nav */}
-      <View style={[styles.nav, { paddingBottom: insets.bottom + 8 }]}>
-        {TABS.map((t) => {
-          const active = tab === t.key;
-          return (
-            <TouchableOpacity key={t.key} style={styles.navItem} onPress={() => selectTab(t.key)} activeOpacity={0.7}>
-              <Text style={[styles.navIcon, { opacity: active ? 1 : 0.5 }]}>{t.icon}</Text>
-              <Text style={[styles.navLabel, active && { color: C.primary }]}>{t.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        {tab === "about" && <AboutScreen bottomPad={insets.bottom + 80} />}
       </View>
+
+      {/* Bottom nav — hidden while typing so it doesn't crowd the keyboard */}
+      {kb === 0 && (
+        <View style={[styles.nav, { paddingBottom: insets.bottom + 8 }]}>
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            return (
+              <TouchableOpacity key={t.key} style={styles.navItem} onPress={() => selectTab(t.key)} activeOpacity={0.7}>
+                <Text style={[styles.navIcon, { opacity: active ? 1 : 0.5 }]}>{t.icon}</Text>
+                <Text style={[styles.navLabel, active && { color: C.primary }]}>{t.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       {/* Language picker */}
       <Modal visible={langOpen} transparent animationType="slide" onRequestClose={() => setLangOpen(false)}>
@@ -317,6 +343,9 @@ function Root() {
 /* ---------- Chat screen ---------- */
 function ChatScreen(p: any) {
   const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (p.keyboardUp) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+  }, [p.keyboardUp]);
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -475,6 +504,129 @@ function ProgressScreen({ progress, bottomPad }: { progress: Progress | null; bo
         ))
       )}
     </ScrollView>
+  );
+}
+
+/* ---------- About screen ---------- */
+const SARVAM_TOOLS = [
+  { icon: "🧠", t: "Multilingual LLM", d: "Writes every piece of study material, natively in your language." },
+  { icon: "🔊", t: "Bulbul TTS", d: "Reads it aloud in natural Indian voices." },
+  { icon: "👁️", t: "Sarvam Vision", d: "OCR for photos & PDFs of handwritten notes." },
+  { icon: "🎙️", t: "Saaras STT", d: "Ask doubts by voice in your language." },
+];
+
+function AboutScreen({ bottomPad }: { bottomPad: number }) {
+  return (
+    <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: bottomPad }}>
+      <View style={{ alignItems: "center", marginTop: 6, marginBottom: 8 }}>
+        <Text style={{ fontSize: 40 }}>📚</Text>
+        <Text style={[styles.brand, { fontSize: 28, marginTop: 6 }]}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
+        <Text style={styles.muted}>AI Study Companion · Sarvam AI 🇮🇳</Text>
+      </View>
+
+      <View style={styles.aboutSection}>
+        <Text style={styles.aboutTitle}>What is VidhyaAI?</Text>
+        <Text style={styles.body}>
+          Turn any topic, your notes, or a photo of your textbook into instant, exam-ready study
+          material — in your own language. Built to help students who don&apos;t just want to study in English.
+        </Text>
+      </View>
+
+      <View style={styles.aboutSection}>
+        <Text style={styles.aboutTitle}>9 study modes</Text>
+        <View style={styles.topicWrap}>
+          {MODES.map((m) => (
+            <Text key={m.key} style={styles.topicChip}>{m.icon} {m.label}</Text>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.aboutSection}>
+        <Text style={styles.aboutTitle}>Powered by Sarvam AI 🇮🇳</Text>
+        {SARVAM_TOOLS.map((s) => (
+          <View key={s.t} style={styles.block}>
+            <Text style={styles.blockLabel}>{s.icon} {s.t}</Text>
+            <Text style={styles.muted}>{s.d}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.aboutSection}>
+        <Text style={styles.aboutTitle}>12 languages</Text>
+        <Text style={styles.muted}>{LANGS.join(" · ")}</Text>
+      </View>
+
+      <View style={styles.aboutSection}>
+        <Text style={styles.aboutTitle}>Also on the web</Text>
+        <TouchableOpacity onPress={() => Linking.openURL("https://vidhya-ai-01.netlify.app")}>
+          <Text style={styles.link}>🌐 vidhya-ai-01.netlify.app</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Linking.openURL("https://github.com/Mehulkoshti/vidhyaai")}>
+          <Text style={styles.link}>💻 github.com/Mehulkoshti/vidhyaai</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={[styles.muted, { textAlign: "center", marginTop: 8 }]}>
+        Built for HACKHAZARDS &apos;26 · Team The Pride · v1.0.0
+      </Text>
+    </ScrollView>
+  );
+}
+
+/* ---------- Onboarding ---------- */
+const SLIDES = [
+  { icon: "📚", title: "Study anything, instantly", text: "Turn any topic, notes, or a photo of your textbook into summaries, quizzes, flashcards & more." },
+  { icon: "🇮🇳", title: "In your language", text: "Powered by Sarvam AI — study in Hindi, Marathi, Tamil, Bengali & 12 languages, with natural voice." },
+  { icon: "🎯", title: "Test, track & grow", text: "Take mock tests, earn certificates, track your streak, and revise the smart way." },
+];
+
+function Onboarding({ onDone }: { onDone: () => void }) {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const ref = useRef<ScrollView>(null);
+  const [idx, setIdx] = useState(0);
+  const last = idx === SLIDES.length - 1;
+
+  function next() {
+    if (last) { onDone(); return; }
+    ref.current?.scrollTo({ x: (idx + 1) * width, animated: true });
+    setIdx(idx + 1);
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top, paddingBottom: insets.bottom + 16 }}>
+      <View style={{ alignItems: "flex-end", paddingHorizontal: 18, paddingTop: 8 }}>
+        <TouchableOpacity onPress={onDone}><Text style={styles.muted}>Skip</Text></TouchableOpacity>
+      </View>
+      <ScrollView
+        ref={ref}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / width))}
+        style={{ flex: 1 }}
+      >
+        {SLIDES.map((s) => (
+          <View key={s.title} style={{ width, alignItems: "center", justifyContent: "center", paddingHorizontal: 36 }}>
+            <Text style={{ fontSize: 84 }}>{s.icon}</Text>
+            <Text style={styles.onbTitle}>{s.title}</Text>
+            <Text style={styles.onbText}>{s.text}</Text>
+          </View>
+        ))}
+      </ScrollView>
+
+      <View style={styles.dots}>
+        {SLIDES.map((_, i) => (
+          <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
+        ))}
+      </View>
+
+      <View style={{ paddingHorizontal: 24 }}>
+        <TouchableOpacity style={styles.btn} onPress={next}>
+          <Text style={styles.btnText}>{last ? "✨ Get started" : "Next →"}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -771,4 +923,14 @@ const styles = StyleSheet.create({
   statValue: { color: C.primary, fontSize: 26, fontWeight: "800" },
   statLabel: { color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginTop: 4 },
   attemptRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.border, backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, marginTop: 8 },
+
+  aboutSection: { marginTop: 18 },
+  aboutTitle: { color: C.primary2, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
+  link: { color: C.primary, fontSize: 15, paddingVertical: 6 },
+
+  onbTitle: { color: C.fg, fontSize: 26, fontWeight: "800", textAlign: "center", marginTop: 24 },
+  onbText: { color: C.muted, fontSize: 16, lineHeight: 24, textAlign: "center", marginTop: 12 },
+  dots: { flexDirection: "row", justifyContent: "center", gap: 8, marginVertical: 22 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
+  dotActive: { backgroundColor: C.primary, width: 22 },
 });

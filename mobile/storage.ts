@@ -105,6 +105,22 @@ function computeStreak(days: string[]): number {
   return streak;
 }
 
+/* ---------- Onboarding ---------- */
+export async function isOnboarded(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem("vidhyaai_onboarded")) === "1";
+  } catch {
+    return false;
+  }
+}
+export async function setOnboarded() {
+  try {
+    await AsyncStorage.setItem("vidhyaai_onboarded", "1");
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function getProgress(): Promise<Progress> {
   const { attempts, days } = await readStats();
   const p = attempts.map((a) => a.percent);
