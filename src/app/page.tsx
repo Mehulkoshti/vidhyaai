@@ -60,7 +60,9 @@ export default function Landing() {
     <div className="flex-1">
       {/* Nav */}
       <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
-        <span className="font-serif text-xl font-semibold">
+        <span className="flex items-center gap-2 font-serif text-xl font-semibold">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="VidhyaAI logo" className="h-8 w-8 rounded-lg" />
           <span className="text-gradient">VidhyaAI</span>
         </span>
         <div className="flex items-center gap-4">

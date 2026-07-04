@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
   Keyboard,
   Linking,
   Modal,
@@ -530,8 +531,8 @@ function AboutScreen({ bottomPad }: { bottomPad: number }) {
   return (
     <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: bottomPad }}>
       <View style={{ alignItems: "center", marginTop: 6, marginBottom: 8 }}>
-        <Text style={{ fontSize: 40 }}>📚</Text>
-        <Text style={[styles.brand, { fontSize: 28, marginTop: 6 }]}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
+        <Image source={require("./assets/icon.png")} style={{ width: 72, height: 72, borderRadius: 18 }} />
+        <Text style={[styles.brand, { fontSize: 28, marginTop: 10 }]}>Vidhya<Text style={{ color: C.accent }}>AI</Text></Text>
         <Text style={styles.muted}>AI Study Companion · Sarvam AI 🇮🇳</Text>
       </View>
 

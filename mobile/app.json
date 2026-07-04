@@ -15,9 +15,7 @@
       "package": "com.mehulkoshti.vidhyaai",
       "adaptiveIcon": {
         "backgroundColor": "#07080d",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
