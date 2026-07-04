@@ -10,7 +10,9 @@ const memory = new Map<string, string>();
 
 async function blobStore() {
   const { getStore } = await import("@netlify/blobs");
-  return getStore("vidhyaai-classroom");
+  // Strong consistency so a read right after a write (e.g. a student opening a
+  // class the teacher just created) always sees the latest data.
+  return getStore({ name: "vidhyaai-classroom", consistency: "strong" });
 }
 
 export async function readJson<T = unknown>(key: string): Promise<T | null> {
