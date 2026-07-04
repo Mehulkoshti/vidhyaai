@@ -173,6 +173,16 @@ function Root() {
 
   useEffect(() => { loadLibrary().then(setLibrary); }, []);
   useEffect(() => { isOnboarded().then(setOnb); }, []);
+  // Ask for mic permission + configure the audio session up front (recommended
+  // expo-audio pattern) so recording doesn't fail on first use.
+  useEffect(() => {
+    (async () => {
+      try {
+        await AudioModule.requestRecordingPermissionsAsync();
+        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+      } catch { /* ignore */ }
+    })();
+  }, []);
   useEffect(() => {
     // Compute the exact keyboard overlap from its top edge (screenY) rather than
     // endCoordinates.height, which over-reports under Android edge-to-edge and
@@ -228,29 +238,33 @@ function Root() {
     try {
       if (recording) {
         setRecording(false);
+        setTranscribing(true);
         await recorder.stop();
         const uri = recorder.uri;
-        if (!uri) return;
-        setTranscribing(true);
+        if (!uri) { setTranscribing(false); return; }
         const fd = new FormData();
         fd.append("file", { uri, name: "audio.m4a", type: "audio/m4a" } as any);
         fd.append("lang", lang);
         const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
         const json = await res.json();
         if (res.ok && json.transcript) setTopic((t) => (t ? `${t} ${json.transcript}` : json.transcript));
+        else if (!res.ok) Alert.alert("Voice input", json?.error || "Could not transcribe.");
+        setTranscribing(false);
       } else {
         const perm = await AudioModule.requestRecordingPermissionsAsync();
-        if (!perm.granted) { Alert.alert("Microphone", "Please allow microphone access for voice input."); return; }
-        await setAudioModeAsync({ allowsRecording: true });
+        if (!perm.granted) {
+          Alert.alert("Microphone needed", "Please allow microphone access for VidhyaAI in your phone's app settings, then try again.");
+          return;
+        }
+        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
         await recorder.prepareToRecordAsync();
         recorder.record();
         setRecording(true);
       }
-    } catch {
-      Alert.alert("Voice input", "Couldn't capture audio on this device.");
+    } catch (e: any) {
       setRecording(false);
-    } finally {
       setTranscribing(false);
+      Alert.alert("Voice input error", String(e?.message || e));
     }
   }
 
