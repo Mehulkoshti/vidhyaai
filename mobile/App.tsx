@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Keyboard,
   Linking,
   Modal,
@@ -172,11 +173,21 @@ function Root() {
   useEffect(() => { loadLibrary().then(setLibrary); }, []);
   useEffect(() => { isOnboarded().then(setOnb); }, []);
   useEffect(() => {
-    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const s = Keyboard.addListener(showEvt, (e) => setKb(e.endCoordinates.height));
-    const h = Keyboard.addListener(hideEvt, () => setKb(0));
-    return () => { s.remove(); h.remove(); };
+    // Compute the exact keyboard overlap from its top edge (screenY) rather than
+    // endCoordinates.height, which over-reports under Android edge-to-edge and
+    // caused the composer to jump too high.
+    const onFrame = (e: any) => {
+      const winH = Dimensions.get("window").height;
+      const overlap = winH - e.endCoordinates.screenY;
+      setKb(overlap > 0 ? overlap : 0);
+    };
+    const showEvt = Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow";
+    const subs = [
+      Keyboard.addListener(showEvt, onFrame),
+      Keyboard.addListener("keyboardDidChangeFrame", onFrame),
+      Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () => setKb(0)),
+    ];
+    return () => subs.forEach((s) => s.remove());
   }, []);
 
   function selectTab(t: Tab) {
