@@ -242,13 +242,23 @@ function Root() {
         await recorder.stop();
         const uri = recorder.uri;
         if (!uri) { setTranscribing(false); return; }
-        const fd = new FormData();
-        fd.append("file", { uri, name: "audio.m4a", type: "audio/m4a" } as any);
-        fd.append("lang", lang);
-        const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
-        const json = await res.json();
-        if (res.ok && json.transcript) setTopic((t) => (t ? `${t} ${json.transcript}` : json.transcript));
-        else if (!res.ok) Alert.alert("Voice input", json?.error || "Could not transcribe.");
+        // Upload the recorded file with Expo's native multipart uploader instead
+        // of a JS FormData({uri,...}) part — the latter throws "Unsupported
+        // FormDataPart implementation" on Expo SDK 57. uploadAsync sends the file
+        // as the "file" field and lang as a form parameter, exactly what /api/stt
+        // expects.
+        const up = await FileSystem.uploadAsync(`${API_BASE}/api/stt`, uri, {
+          httpMethod: "POST",
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: "file",
+          mimeType: "audio/m4a",
+          parameters: { lang },
+        });
+        const ok = up.status >= 200 && up.status < 300;
+        let json: any = {};
+        try { json = up.body ? JSON.parse(up.body) : {}; } catch { /* non-json body */ }
+        if (ok && json.transcript) setTopic((t) => (t ? `${t} ${json.transcript}` : json.transcript));
+        else Alert.alert("Voice input", json?.error || "Could not transcribe. Please try again.");
         setTranscribing(false);
       } else {
         const perm = await AudioModule.requestRecordingPermissionsAsync();

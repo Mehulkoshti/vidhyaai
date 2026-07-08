@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
     }
 
     const out = new FormData();
-    out.append("file", file, "audio.webm");
+    // Preserve the uploaded file's real name so Sarvam sees the correct format:
+    // web records WebM, the mobile app records M4A. (File carries its own type.)
+    out.append("file", file, file.name || "audio.webm");
     out.append("model", "saaras:v3");
     const code = LANG_CODE[lang];
     if (code) out.append("language_code", code);
