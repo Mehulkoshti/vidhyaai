@@ -58,3 +58,55 @@ export async function geminiChat(userContent: string): Promise<string> {
   if (!text) throw new Error("Gemini returned an empty response");
   return text;
 }
+
+/**
+ * Transcribe audio with Gemini (multimodal) — the fallback for /api/stt.
+ * Sarvam's Saaras STT only accepts WAV/MP3, but the web records WebM and the
+ * mobile app records M4A, which Saaras rejects with "Invalid audio file".
+ * Gemini reads those formats directly, so voice input works everywhere.
+ */
+export async function geminiTranscribe(
+  base64Audio: string,
+  mimeType: string,
+  lang = "English"
+): Promise<string> {
+  if (!apiKey) throw new Error("Gemini not configured");
+
+  // Normalise container/codec labels to what Gemini accepts.
+  let mime = (mimeType || "").toLowerCase();
+  if (/m4a|mp4|aac/.test(mime)) mime = "audio/mp4";
+  else if (/webm|opus/.test(mime)) mime = "audio/ogg";
+  else if (/wav|wave|x-wav|pcm/.test(mime)) mime = "audio/wav";
+  else if (!mime.startsWith("audio/")) mime = "audio/mp4";
+
+  const res = await fetch(URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            {
+              text:
+                `Transcribe this audio to plain text` +
+                (lang && lang !== "English" ? ` in ${lang}` : "") +
+                `. Return ONLY the transcript — no quotes, labels or extra words. ` +
+                `If there is no clear speech, return an empty string.`,
+            },
+            { inline_data: { mime_type: mime, data: base64Audio } },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0 },
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Gemini STT ${res.status}: ${detail.slice(0, 150)}`);
+  }
+  const json = await res.json();
+  const text: string =
+    json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || "").join("") || "";
+  return text.trim();
+}
