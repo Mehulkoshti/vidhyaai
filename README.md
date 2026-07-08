@@ -4,7 +4,7 @@
 
 VidhyaAI turns **any topic, your own notes, or a photo/PDF** into instant, exam-ready study material — in **your language**. Paste a topic, pick a mode, and get AI-generated **summaries, quizzes, flashcards, mind maps, mock tests, and dead-simple explanations** in seconds.
 
-Powered end-to-end by **Sarvam AI**, India's own multilingual AI stack — which is exactly why VidhyaAI can genuinely teach in Hindi, Marathi, Tamil and Bengali, not just translate.
+Powered primarily by **Sarvam AI**, India's own multilingual AI stack — which is exactly why VidhyaAI can genuinely teach in Hindi, Marathi, Tamil and Bengali, not just translate — with a **Google Gemini fallback** that keeps every mode reliable on Sarvam's free tier.
 
 ## ✨ Features (8 study modes)
 
@@ -13,7 +13,7 @@ Powered end-to-end by **Sarvam AI**, India's own multilingual AI stack — which
 - **🃏 Flashcards** — flip-card revision deck (3D flip animation)
 - **💡 Explain** — the same concept as *Explain-Like-I'm-5*, in-depth, and as a memorable analogy
 - **🗺️ Mind Map** — the whole topic as a visual, branching concept map
-- **📝 Mock Test** — timed 10-question exam, scored report card & weak-area detection
+- **📝 Mock Test** — timed mock exam, scored report card & weak-area detection
 - **🏆 Certificate** — pass the test and download a branded certificate (rendered on canvas)
 - **📅 Study Planner** — a day-by-day revision plan up to your exam date
 - **💬 Ask a doubt** — chat with an AI tutor that remembers your whole session
@@ -23,17 +23,20 @@ Powered end-to-end by **Sarvam AI**, India's own multilingual AI stack — which
 
 | Capability | Sarvam product | Where in the app |
 |---|---|---|
-| All study-material generation | **Chat Completions** (`sarvam-30b` → `sarvam-105b` fallback) with strict JSON-schema structured output | every study mode + "Ask a doubt" |
+| All study-material generation | **Chat Completions** (`sarvam-30b`) returning clean JSON (Gemini fallback if a call fails) | every study mode + "Ask a doubt" |
 | Read-aloud in native voices | **Bulbul v3** Text-to-Speech | the 🔊 Listen button |
 | Photo / PDF → notes *(optional)* | **Sarvam Vision** document OCR | attach a file in any study mode |
 
 The multilingual LLM is what makes "study in your own language" real — Sarvam is trained India-first, so Hindi/Marathi/Tamil/Bengali output actually reads naturally.
 
+> **Reliability fallback:** Sarvam is the primary engine and gets first shot at every request. On Sarvam's free "starter" tier the model has a 4096-token output cap that heavier requests (long mock tests, day-by-day planners, full course outlines) can exceed. To keep the app rock-solid, if a Sarvam call fails or times out we transparently fall back to **Google Gemini (`gemini-2.5-flash`)**, asking for the exact same JSON — so the experience is seamless and no mode ever breaks.
+
 ## 🛠️ Tech Stack
 
 - **Next.js 16** (App Router) + **React 19**
 - **TypeScript** + **Tailwind CSS v4**
-- **Sarvam AI** — OpenAI-compatible Chat Completions, Bulbul TTS, Sarvam Vision
+- **Sarvam AI** (primary) — OpenAI-compatible Chat Completions, Bulbul TTS, Sarvam Vision
+- **Google Gemini** (`gemini-2.5-flash`) — reliability fallback for study-material generation
 - Deployed on **Netlify**
 
 ## 🚀 Run Locally
@@ -52,7 +55,9 @@ Open http://localhost:3000
    ```
    SARVAM_API_KEY=your_actual_key_here
    SARVAM_MOCK=0
-   SARVAM_MODELS=sarvam-30b,sarvam-105b
+   SARVAM_MODELS=sarvam-30b
+   # Optional but recommended — reliability fallback (free key at aistudio.google.com/apikey):
+   GEMINI_API_KEY=your_gemini_key_here
    ```
 
 > **Credit note:** Text generation is per-token and very cheap (~1–2 paise per call). TTS/Vision are billed per character/page, so they run only on explicit user actions and are cached. Keep `SARVAM_MOCK=1` while developing to spend **nothing**.

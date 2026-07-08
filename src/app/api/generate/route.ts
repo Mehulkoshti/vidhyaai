@@ -74,6 +74,12 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Something went wrong";
     console.error("[VidhyaAI] generate error:", message);
-    return NextResponse.json({ error: "AI generation failed. Please try again." }, { status: 500 });
+    // Most failures here are the AI running long / returning nothing on a busy
+    // moment (esp. the heavier Beta modes) — a retry usually works, so keep the
+    // message calm and actionable rather than alarming.
+    return NextResponse.json(
+      { error: "The AI is busy right now — please tap Send again to retry." },
+      { status: 503 }
+    );
   }
 }
