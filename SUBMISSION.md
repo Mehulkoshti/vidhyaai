@@ -31,11 +31,11 @@ Built for students who study in their own language.
 
 **GitHub Link** — `https://github.com/Mehulkoshti/vidhyaai`  *(monorepo: web at root, mobile in `/mobile`)*
 
-**Live Link** — `https://<your-app>.netlify.app`  *(deployed web app)*
+**Live Link** — `https://vidhya-ai-01.netlify.app`  *(deployed web app)*
 
-**Demo Video Link** — `https://youtube.com/...`  *(2–3 min screen recording)*
+**Demo Video Link** — `https://youtube.com/...`  *(2–3 min screen recording — STILL PENDING)*
 
-**Presentation Link** — `https://...`  *(optional slides/Canva)*
+**Presentation Link** — `https://canva.link/1jvh8om8urjdrpf`  *(Canva pitch deck — ensure Share is set to "Anyone with the link → Can view")*
 
 **Tags**
 ```
@@ -50,7 +50,7 @@ Next.js, React, TypeScript, Tailwind CSS, Sarvam AI, Google Gemini, Expo, React 
 
 **Any additional project links** (one per line) →
 ```
-Mobile app (Expo APK): <paste EAS build .apk link>
+Mobile app (Expo APK build): https://expo.dev/accounts/mehulkoshti/projects/vidhyaai/builds/f1e75cdf-38aa-4199-9e81-f60c8ad1e469
 Mobile source: https://github.com/Mehulkoshti/vidhyaai/tree/main/mobile
 ```
 
@@ -162,7 +162,9 @@ Title: **"Building VidhyaAI: an India-first AI study companion on Sarvam AI"**
 - [ ] Add real `SARVAM_API_KEY` (+ `GEMINI_API_KEY` fallback) to env, set `SARVAM_MOCK=0`, run ~5 verify calls
 - [ ] Push repo to GitHub → paste GitHub link
 - [ ] Deploy web to Netlify (SARVAM_API_KEY env) → paste Live link
-- [ ] Point `mobile/App.tsx` `API_BASE` at the live URL; `eas build -p android` → get APK link
+- [x] Point `mobile/App.tsx` `API_BASE` at the live URL; `eas build -p android` → get APK link (build: expo.dev/accounts/mehulkoshti/projects/vidhyaai/builds/f1e75cdf-38aa-4199-9e81-f60c8ad1e469)
+- [x] Deploy web to Netlify → Live: https://vidhya-ai-01.netlify.app
+- [x] Presentation deck (Canva): https://canva.link/1jvh8om8urjdrpf
 - [ ] Record 2–3 min demo video (show web + mobile + Hindi voice) → paste Demo link
 - [ ] Fill Create Project form + select **Sarvam + Expo** tracks + 2 themes
 - [ ] Paste mobile APK + mobile source in "Any additional project links"
